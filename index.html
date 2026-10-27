@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>모두의 건축공학</title>
+    <title>CPM 주공정법</title>
     <meta
       name="description"
-      content="누구나 배우는 건축공학. 구조, 재료, 시공, 환경·설비를 한곳에서."
+      content="공정표를 처음 배우는 학생을 위한 CPM(주공정법) 학습. ES, EF부터 주공정까지."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -14,32 +14,34 @@
       href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&family=Noto+Serif+KR:wght@600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=29" />
   </head>
   <body>
     <div class="grid-bg" aria-hidden="true"></div>
     <header class="site-header">
-      <a class="logo" href="#/" data-link>
-        <span class="logo-mark">모</span>
-        <span class="logo-text">모두의 건축공학</span>
-      </a>
-      <nav class="nav">
-        <a href="#/" data-link>홈</a>
-        <a href="#/cpm" data-link>CPM</a>
-        <a href="#/curriculum" data-link>커리큘럼</a>
-        <a href="#/glossary" data-link>용어사전</a>
-        <a href="#/quiz" data-link>연습문제</a>
+      <div class="brand-row">
+        <button type="button" class="back-btn" id="nav-back" hidden>← 뒤로</button>
+        <a class="logo" href="#/" data-link>
+          <span class="logo-mark">도</span>
+          <span class="logo-text">CPM 주공정법</span>
+        </a>
+      </div>
+      <nav class="nav" aria-label="주요 메뉴">
+        <a href="#/" data-nav="home" data-link>홈</a>
+        <a href="#/cpm/learn/schedule" data-nav="learn" data-link>기초</a>
+        <a href="#/glossary" data-nav="glossary" data-link>용어</a>
+        <a href="#/cpm" data-nav="practice" data-link>실습</a>
+        <a href="#/solve" data-nav="solve" data-link>문제풀이</a>
       </nav>
     </header>
 
     <main id="app"></main>
 
     <footer class="site-footer">
-      <p>모두의 건축공학 · 입문자를 위한 건축공학 학습 웹</p>
+      <p>CPM 주공정법 · 처음 배우는 학생을 위한 공정표 학습</p>
     </footer>
 
-    <script src="content.js?v=4"></script>
-    <script src="cpm.js?v=4"></script>
-    <script src="app.js?v=4"></script>
+    <script src="cpm.js?v=25"></script>
+    <script src="app.js?v=40"></script>
   </body>
 </html>

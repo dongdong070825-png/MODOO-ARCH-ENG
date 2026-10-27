@@ -2,202 +2,236 @@ const app = document.getElementById("app");
 
 function parseHash() {
   const raw = location.hash.replace(/^#/, "") || "/";
-  const parts = raw.split("/").filter(Boolean);
+  const parts = raw.split("/").filter(Boolean).map((part) => {
+    try {
+      return decodeURIComponent(part);
+    } catch (e) {
+      return part;
+    }
+  });
   return { parts, path: "/" + parts.join("/") };
+}
+
+function loadNotes() {
+  try {
+    const raw = JSON.parse(localStorage.getItem("cpm-wrong-notes") || "[]");
+    return Array.isArray(raw) ? raw : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveNotes(list) {
+  try {
+    localStorage.setItem("cpm-wrong-notes", JSON.stringify(list.slice(0, 80)));
+  } catch (e) {
+    /* ignore quota */
+  }
+}
+
+function forgetNote(id) {
+  saveNotes(loadNotes().filter((n) => n.id !== id));
+}
+
+function rememberNote(note) {
+  const rest = loadNotes().filter((n) => n.id !== note.id);
+  saveNotes([{ ...note, at: Date.now() }, ...rest]);
+  refreshNoteCount();
+}
+
+function refreshNoteCount() {
+  const n = loadNotes().length;
+  const badge = document.getElementById("note-count");
+  if (!badge) return;
+  badge.hidden = n === 0;
+  badge.textContent = String(n);
 }
 
 function navActive() {
   const { parts } = parseHash();
-  const key = parts[0] || "";
-  document.querySelectorAll(".nav a").forEach((a) => {
-    const href = a.getAttribute("href");
-    const isHome = href === "#/" && !key;
-    const isMatch = key && href === `#/${key}`;
-    a.classList.toggle("active", isHome || isMatch);
+  const [a, b] = parts;
+  const current = !a
+    ? "home"
+    : a === "glossary"
+      ? "glossary"
+      : a === "solve"
+        ? "solve"
+        : a === "cpm" && b === "learn"
+          ? "learn"
+          : a === "cpm" || a === "notes"
+            ? "practice"
+            : "";
+  document.querySelectorAll("[data-nav]").forEach((el) => {
+    el.classList.toggle("active", el.dataset.nav === current);
   });
+  const back = document.getElementById("nav-back");
+  if (back) back.hidden = current === "home";
+  refreshNoteCount();
 }
 
 function homeView() {
+  const notes = loadNotes().length;
   return `
-    <section class="hero">
-      <div>
-        <div class="kicker">ARCHITECTURE ENGINEERING</div>
-        <h1>누구나 배우는<br/>건축공학</h1>
-        <p class="lead">
-          구조·재료와 함께, 건축기사 시공에서 반복되는 <strong>CPM(주공정법)</strong>을
-          네트워크 계산 실습으로 익힙니다.
-        </p>
-        <p>
-          <a class="btn" href="#/cpm/walk/basic" data-link>CPM 따라 계산하기</a>
-          <a class="btn ghost" href="#/cpm" data-link>학습 프로그램</a>
-        </p>
-      </div>
-      <div class="hero-card">
-        <h3>건축기사 · 주공정법</h3>
-        <p class="lead" style="font-size:15px">TE·TL → ES/EF/LS/LF → TF·FF → 주공정선</p>
-        <div class="stat-row">
-          <div class="stat"><b>${CPM_THEORY.length}</b><span>개념 강의</span></div>
-          <div class="stat"><b>${CPM_PROBLEMS.length}</b><span>네트워크 실습</span></div>
-          <div class="stat"><b>${CPM_QUIZ.length}</b><span>기사형 문제</span></div>
-        </div>
-      </div>
+    <section class="sheet-hero">
+      <div class="kicker">건축 공정 · 도면실</div>
+      <h1>공정표를 그리는 곳</h1>
+      <p class="lead">
+        공사 일정을 결합점과 화살표로 익힙니다. 처음이면 기초부터, 계산이 필요하면 실습으로 들어가면 됩니다.
+      </p>
+      <nav class="gate-nav" aria-label="첫 화면 메뉴">
+        <a class="gate-btn" href="#/cpm/learn/schedule" data-nav="learn" data-link><b>기초</b><small>개념을 순서대로</small></a>
+        <a class="gate-btn" href="#/glossary" data-nav="glossary" data-link><b>용어</b><small>ES, EF, 주공정</small></a>
+        <a class="gate-btn" href="#/cpm" data-nav="practice" data-link><b>실습</b><small>${notes ? `연습 다섯 가지 · 오답 ${notes}` : "그리기, 계산, 연습"}</small></a>
+        <a class="gate-btn" href="#/solve" data-nav="solve" data-link><b>문제풀이</b><small>기출 사진을 해설</small></a>
+      </nav>
     </section>
-    <div class="section-head">
-      <h2>CPM 실습 문제</h2>
-      <a href="#/cpm" data-link>프로그램 홈</a>
-    </div>
-    <div class="cards">
-      ${CPM_PROBLEMS.map(problemCard).join("")}
-    </div>
-    <div class="section-head">
-      <h2>기초 과목</h2>
-      <a href="#/curriculum" data-link>전체 보기</a>
-    </div>
-    <div class="cards">
-      ${COURSES.slice(0, 4).map(courseCard).join("")}
-    </div>
   `;
 }
 
-function courseCard(c) {
-  const first = c.lessons[0];
+function glossaryView() {
   return `
-    <a class="card" href="#/lesson/${c.id}/${first.id}" data-link>
-      <span class="badge">${c.level}</span>
-      <h3>${c.title}</h3>
-      <p>${c.summary}</p>
-    </a>
+    <div class="kicker">WORDS</div>
+    <h1>용어사전</h1>
+    <p class="lead">공정표를 처음 볼 때 나오는 말입니다. 강의에서 한 번씩 나온 뒤, 여기서 짧게 다시 볼 수 있습니다.</p>
+    ${CPM_GLOSSARY.map(
+      (g) => `<div class="term" id="term-${encodeURIComponent(g.term)}"><h3>${g.term}</h3><p>${g.def}</p></div>`
+    ).join("")}
   `;
 }
-
 function problemCard(p) {
+  const best = loadBest()[p.id];
   return `
     <a class="card" href="#/cpm/walk/${p.id}" data-link>
       <span class="badge">${p.level}</span>
+      ${best == null ? "" : `<span class="badge best">도전 ${best}점</span>`}
       <h3>${p.title}</h3>
       <p>${p.brief}</p>
     </a>
   `;
 }
 
-function curriculumView() {
-  return `
-    <div class="kicker">CURRICULUM</div>
-    <h1>커리큘럼</h1>
-    <p class="lead">기사 CPM과 건축공학 입문을 함께 둡니다.</p>
-    <div class="cards">
-      <a class="card" href="#/cpm" data-link>
-        <span class="badge">기사</span>
-        <h3>CPM 주공정법</h3>
-        <p>화살선식 네트워크, 여유시간, 주공정선 계산 실습.</p>
-      </a>
-      ${COURSES.map(courseCard).join("")}
-    </div>
-  `;
+const quizUi = { level: "", order: [], at: 0, choice: null, round: 1 };
+
+function startQuiz(level, keepRound) {
+  const order = CPM_QUIZ.map((item, index) => ({ item, index })).filter((row) => row.item.level === level);
+  for (let i = order.length - 1; i > 0; i -= 1) {
+    const swap = Math.floor(Math.random() * (i + 1));
+    const hold = order[i];
+    order[i] = order[swap];
+    order[swap] = hold;
+  }
+  quizUi.level = level;
+  quizUi.order = order;
+  quizUi.at = 0;
+  quizUi.choice = null;
+  if (!keepRound) quizUi.round = 1;
 }
 
-function findCourse(id) {
-  return COURSES.find((c) => c.id === id);
-}
-
-function lessonView(courseId, lessonId) {
-  const course = findCourse(courseId);
-  if (!course) return `<p>과목을 찾을 수 없습니다.</p>`;
-  const lesson = course.lessons.find((l) => l.id === lessonId) || course.lessons[0];
-  const idx = course.lessons.findIndex((l) => l.id === lesson.id);
-  const prev = course.lessons[idx - 1];
-  const next = course.lessons[idx + 1];
-
-  return `
-    <div class="lesson-layout">
-      <aside class="side">
-        <div class="kicker">${course.level}</div>
-        <h3>${course.title}</h3>
-        ${course.lessons
+function cpmQuizView(level) {
+  const bands = [
+    ["하", "뜻을 고릅니다.", "용어와 기호의 뜻"],
+    ["중", "공식과 순서를 고릅니다.", "계산 순서와 공식"],
+    ["상", "공기와 여유를 계산합니다.", "공기, TF, FF, DF"],
+  ];
+  if (level !== "하" && level !== "중" && level !== "상") {
+    return `
+      <div class="kicker">객관식</div>
+      <h1>난이도를 골라 풀기</h1>
+      <p class="lead">상, 중, 하 중에서 하나를 고르면 그 난이도 문제가 하나씩 나옵니다. 채점한 뒤 다음 문제로 이어집니다.</p>
+      <nav class="hub-menu" aria-label="난이도">
+        ${bands
           .map(
-            (l) =>
-              `<a href="#/lesson/${course.id}/${l.id}" data-link class="${l.id === lesson.id ? "active" : ""}">${l.title}</a>`
+            ([name, desc, detail]) =>
+              `<a class="gate-btn" href="#/cpm/quiz/${name}" data-link><b>${name}</b><small>${desc}</small><small>${detail}</small></a>`
           )
           .join("")}
-      </aside>
-      <article class="article">
-        <div class="kicker">LESSON</div>
-        <h1>${lesson.title}</h1>
-        ${lesson.body.map((p) => `<p>${p}</p>`).join("")}
-        ${lesson.formula ? `<div class="formula">${lesson.formula}</div>` : ""}
-        <p style="margin-top:28px; display:flex; gap:10px; flex-wrap:wrap">
-          ${prev ? `<a class="btn ghost" href="#/lesson/${course.id}/${prev.id}" data-link>이전: ${prev.title}</a>` : ""}
-          ${next ? `<a class="btn" href="#/lesson/${course.id}/${next.id}" data-link>다음: ${next.title}</a>` : `<a class="btn" href="#/cpm" data-link>CPM으로</a>`}
-        </p>
-      </article>
+      </nav>
+    `;
+  }
+  if (quizUi.level !== level || !quizUi.order.length) startQuiz(level);
+  const current = quizUi.order[quizUi.at];
+  const item = current.item;
+  const picked = quizUi.choice;
+  const done = picked != null;
+  return `
+    <div class="kicker">객관식 · ${level} · ${quizUi.at + 1} / ${quizUi.order.length}</div>
+    <h1>${quizUi.round > 1 && quizUi.at === 0 && !done ? "같은 난이도를 다시 이어 갑니다" : "한 문제씩 풀기"}</h1>
+    <p class="lead">${level === "하" ? "뜻을 확인하는 문제입니다." : level === "중" ? "공식과 순서를 고르는 문제입니다." : "공기와 여유를 계산하는 문제입니다."} 답을 고르면 채점되고, 다음 문제로 이어집니다.</p>
+    <p><a class="btn ghost" href="#/cpm/quiz" data-link>난이도 다시 고르기</a></p>
+    <div class="quiz-item" data-cpm-quiz="${current.index}">
+      <strong>${quizUi.at + 1}. ${item.q}</strong>
+      <div class="options">
+        ${item.choices
+          .map((choice, choiceIndex) => {
+            const mark = done && choiceIndex === item.answer ? "correct" : done && choiceIndex === picked && picked !== item.answer ? "wrong" : "";
+            return `<button type="button" data-quiz-choice="${choiceIndex}" class="${mark}" ${done ? "disabled" : ""}>${choice}</button>`;
+          })
+          .join("")}
+      </div>
+      ${
+        done
+          ? `<p class="quiz-why">${picked === item.answer ? item.why : `오답노트에 넣어 두었습니다. ${item.why}`}</p>
+             <p><button type="button" class="btn" data-quiz-next>다음 문제</button></p>`
+          : ""
+      }
     </div>
-  `;
-}
-
-function glossaryView() {
-  return `
-    <div class="kicker">GLOSSARY</div>
-    <h1>용어사전</h1>
-    ${GLOSSARY.map((g) => `<div class="term"><h3>${g.term}</h3><p>${g.def}</p></div>`).join("")}
-  `;
-}
-
-function quizView() {
-  return quizBlock("연습문제", QUIZ);
-}
-
-function quizBlock(title, items, attr = "data-quiz") {
-  return `
-    <div class="kicker">QUIZ</div>
-    <h1>${title}</h1>
-    <p class="lead">답을 고르면 바로 채점됩니다. 다시 누르면 초기화됩니다.</p>
-    ${items
-      .map(
-        (item, i) => `
-      <div class="quiz-item" ${attr}="${i}">
-        <strong>${i + 1}. ${item.q}</strong>
-        <div class="options">
-          ${item.choices
-            .map((c, j) => `<button type="button" data-choice="${j}">${c}</button>`)
-            .join("")}
-        </div>
-      </div>`
-      )
-      .join("")}
   `;
 }
 
 function cpmHub() {
+  const notes = loadNotes().length;
   return `
-    <div class="kicker">건축기사 · 시공</div>
-    <h1>CPM 주공정법</h1>
-    <p class="lead">학생용 순서: 공식 치트시트 → 따라 계산하기 → 표 채점 → 공기 단축 → 객관식. 결합점 숫자를 가린 채 손계산하는 습관을 만듭니다.</p>
-    <p>
-      <a class="btn" href="#/cpm/walk/basic" data-link>따라 계산하기</a>
-      <a class="btn ghost" href="#/cpm/practice/basic" data-link>표 채점 실습</a>
-      <a class="btn ghost" href="#/cpm/crash/basic" data-link>공기 단축</a>
-      <a class="btn ghost" href="#/cpm/lab" data-link>계산기</a>
-    </p>
-    <div class="cheat">
-      <div><b>전진</b>TE(j) = max(TE(i)+D)<br/>ES=TE(i), EF=ES+D</div>
-      <div><b>후진</b>TL(i) = min(TL(j)−D)<br/>LF=TL(j), LS=LF−D</div>
-      <div><b>여유</b>TF = TL(j)−TE(i)−D<br/>FF = TE(j)−TE(i)−D · 주공정은 TF=0</div>
-    </div>
-    <div class="section-head"><h2>개념</h2></div>
-    <div class="cards">
-      ${CPM_THEORY.map(
-        (t) => `
-        <a class="card" href="#/cpm/learn/${t.id}" data-link>
-          <span class="badge">강의</span>
-          <h3>${t.title}</h3>
-          <p>${t.body[0].slice(0, 72)}…</p>
-        </a>`
-      ).join("")}
-    </div>
-    <div class="section-head"><h2>실습 네트워크</h2></div>
-    <div class="cards">${CPM_PROBLEMS.map(problemCard).join("")}</div>
-    <p style="margin-top:28px"><a class="btn" href="#/cpm/quiz" data-link>기사형 객관식</a></p>
+    <div class="kicker">실습</div>
+    <h1>문제로 익히기</h1>
+    <p class="lead">계산 문제만 모아 두었습니다. 개념 설명은 기초 강의에 있습니다.</p>
+    <nav class="hub-menu" aria-label="실습 메뉴">
+      <a class="gate-btn" href="#/cpm/draw" data-link><b>공정표 그리기</b><small>결합점과 화살표로 작성</small></a>
+      <a class="gate-btn" href="#/cpm/walk/roll" data-link><b>따라 계산하기</b><small>들어올 때마다 다른 공정표를 한 단계씩</small></a>
+      <a class="gate-btn" href="#/cpm/play/roll" data-link><b>한 칸 연습</b><small>숫자를 직접 넣고 바로 확인</small></a>
+      <a class="gate-btn" href="#/notes" data-link><b>오답노트</b><small>${notes ? `틀린 문제 ${notes}개` : "틀린 문제만 다시"}</small></a>
+      <a class="gate-btn" href="#/cpm/quiz" data-link><b>객관식</b><small>난이도를 고르고 이어서 풀기</small></a>
+    </nav>
   `;
+}
+
+function lessonPoints(points) {
+  if (!points || !points.length) return "";
+  return `<div class="term-grid">${points
+    .map(([name, text]) => `<div><b>${name}</b><span>${text}</span></div>`)
+    .join("")}</div>`;
+}
+
+function lessonFigure(example) {
+  if (!example) return "";
+  const solved = solveCpm(example.activities);
+  const opt = {
+    showCrit: example.showCrit !== false,
+    caption: example.caption || "",
+  };
+  if (example.reveal === false) {
+    opt.revealTE = [];
+    opt.revealTL = [];
+  }
+  const cols = example.table === "all" ? ["es", "ef", "ls", "lf", "tf", "ff"] : example.table === "es" ? ["es", "ef"] : [];
+  const table = cols.length
+    ? `<div class="table-wrap"><table class="cpm-table"><thead><tr><th>작업</th><th>D</th>${cols
+        .map((k) => `<th>${k.toUpperCase()}</th>`)
+        .join("")}</tr></thead><tbody>${solved.rows
+        .map(
+          (r) =>
+            `<tr class="${example.showCrit !== false && r.critical ? "is-crit" : ""}"><td>${r.name}</td><td>${r.duration}</td>${cols
+              .map((k) => `<td>${r[k]}</td>`)
+              .join("")}</tr>`
+        )
+        .join("")}</tbody></table></div>`
+    : "";
+  const summary =
+    example.reveal === false
+      ? ""
+      : example.showCrit === false
+        ? `<p>끝 결합점의 최초시각은 <strong>${solved.project}일</strong>입니다.</p>`
+        : `<p>공기 <strong>${solved.project}일</strong> · 주공정 ${criticalPathLabels(solved)}</p>`;
+  return `<div class="net-panel">${cpmSvg(solved, opt)}</div>${summary}${table}${example.talk ? `<p>${example.talk}</p>` : ""}`;
 }
 
 function cpmLearn(id) {
@@ -214,36 +248,90 @@ function cpmLearn(id) {
           (t) =>
             `<a href="#/cpm/learn/${t.id}" data-link class="${t.id === lesson.id ? "active" : ""}">${t.title}</a>`
         ).join("")}
-        <a href="#/cpm/walk/basic" data-link>따라 계산하기</a>
-        <a href="#/cpm/practice/basic" data-link>표 채점</a>
-        <a href="#/cpm/crash/basic" data-link>공기 단축</a>
+        <a href="#/cpm" data-link>실습으로</a>
       </aside>
       <article class="article">
-        <div class="kicker">LESSON</div>
+        <div class="kicker">${idx + 1} / ${CPM_THEORY.length}</div>
         <h1>${lesson.title}</h1>
         ${lesson.body.map((p) => `<p>${p}</p>`).join("")}
+        ${lessonPoints(lesson.points)}
         ${lesson.formula ? `<div class="formula">${lesson.formula.replace(/\n/g, "<br/>")}</div>` : ""}
+        ${lessonFigure(lesson.example)}
         <p style="margin-top:28px; display:flex; gap:10px; flex-wrap:wrap">
           ${prev ? `<a class="btn ghost" href="#/cpm/learn/${prev.id}" data-link>이전</a>` : ""}
-          ${next ? `<a class="btn" href="#/cpm/learn/${next.id}" data-link>다음: ${next.title}</a>` : `<a class="btn" href="#/cpm/practice/basic" data-link>실습 시작</a>`}
+          ${next ? `<a class="btn" href="#/cpm/learn/${next.id}" data-link>다음: ${next.title}</a>` : `<a class="btn" href="#/cpm/walk/basic" data-link>따라 계산하기</a>`}
         </p>
       </article>
     </div>
   `;
 }
 
-const walkUi = { id: null, step: 0 };
-const practiceUi = { id: null, reveal: false };
+const walkUi = { id: null, key: null, step: 0 };
+const practiceUi = { id: null, key: null, reveal: false };
+const sessionNets = { roll: null };
+const drawUi = {
+  problem: null,
+  nodes: [],
+  arrows: [],
+  nextNode: 2,
+  nextArrow: 1,
+  tool: "node",
+  arm: null,
+  pending: null,
+  lines: [],
+  ok: false,
+  showAnswer: false,
+  tableMsg: "",
+  panel: "table",
+  answers: [],
+};
+const ganttUi = { source: "solve" };
+const ganttStore = { draw: null, solve: null };
 const crashUi = { id: null, cuts: {} };
+const playUi = {
+  id: null,
+  step: 0,
+  score: 0,
+  streak: 0,
+  bestStreak: 0,
+  attempts: 0,
+  hinted: false,
+  status: "ask",
+  feedback: null,
+  done: false,
+  draft: "",
+  picked: [],
+  first: 0,
+  later: 0,
+  zero: 0,
+  recorded: false,
+  percent: 0,
+  beat: false,
+  prevBest: null,
+};
+
+function problemKey(problem) {
+  return problem.key || problem.id;
+}
+
+function freshSeed() {
+  freshSeed.n = (freshSeed.n || 0) + 1;
+  return (Date.now() + freshSeed.n * 997) >>> 0;
+}
 
 function problemBy(id) {
+  if (id === "roll") {
+    if (!sessionNets.roll) sessionNets.roll = rollNetwork(freshSeed());
+    return sessionNets.roll;
+  }
   return CPM_PROBLEMS.find((p) => p.id === id) || CPM_PROBLEMS[0];
 }
 
 function cpmWalk(id) {
   const problem = problemBy(id);
-  if (walkUi.id !== problem.id) {
+  if (walkUi.id !== problem.id || walkUi.key !== problemKey(problem)) {
     walkUi.id = problem.id;
+    walkUi.key = problemKey(problem);
     walkUi.step = 0;
   }
   const { solved, steps } = buildWalkthrough(problem);
@@ -260,19 +348,21 @@ function cpmWalk(id) {
       <p class="lead">한 단계씩 전진 → 공기 → 후진 → 작업 여유 → 주공정 순입니다. 결합점 숫자는 해당 단계가 되어야 열립니다.</p>
       <div class="walk-meta">
         <span>${walkUi.step + 1} / ${steps.length} · ${s.title}</span>
-        <span>
-          ${CPM_PROBLEMS.map(
-            (p) =>
-              `<a href="#/cpm/walk/${p.id}" data-link class="${p.id === problem.id ? "active" : ""}">${p.title}</a>`
-          ).join(" · ")}
-        </span>
+        ${
+          problem.id === "roll"
+            ? ""
+            : `<span>${CPM_PROBLEMS.map(
+                (p) =>
+                  `<a href="#/cpm/walk/${p.id}" data-link class="${p.id === problem.id ? "active" : ""}">${p.title}</a>`
+              ).join(" · ")}</span>`
+        }
       </div>
       <div class="progress"><span style="width:${pct}%"></span></div>
       <div class="net-panel">${cpmSvg(solved, s)}</div>
       <div class="walk-card">${s.html}</div>
       <p style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px">
         <button type="button" class="btn ghost" id="walk-prev">이전 단계</button>
-        <button type="button" class="btn" id="walk-next">${walkUi.step === last ? "실습으로" : "다음 단계"}</button>
+        <button type="button" class="btn" id="walk-next">${walkUi.step === last ? "한 칸 도전" : "다음 단계"}</button>
         ${nextP && walkUi.step === last ? `<a class="btn ghost" href="#/cpm/walk/${nextP.id}" data-link>다음 네트워크</a>` : ""}
       </p>
     </div>
@@ -280,9 +370,11 @@ function cpmWalk(id) {
 }
 
 function cpmPractice(id) {
-  const problem = problemBy(id);
-  if (practiceUi.id !== problem.id) {
+  const problem = problemBy(id === "roll" || !id ? "roll" : id);
+  const key = problemKey(problem);
+  if (practiceUi.id !== problem.id || practiceUi.key !== key) {
     practiceUi.id = problem.id;
+    practiceUi.key = key;
     practiceUi.reveal = false;
   }
   const solved = solveCpm(problem.activities);
@@ -300,6 +392,8 @@ function cpmPractice(id) {
       <button type="button" class="btn ghost" id="cpm-toggle-nodes">${practiceUi.reveal ? "결합점 숨기기" : "결합점 TE/TL 보기"}</button>
       <button type="button" class="btn ghost" id="cpm-reveal">정답 채우기</button>
       <button type="button" class="btn" id="cpm-check">채점</button>
+      <button type="button" class="btn" id="cpm-new">다른 공정표</button>
+      <a class="btn ghost" href="#/cpm/play/${problem.id}" data-link>한 칸 도전</a>
       <a class="btn ghost" href="#/cpm/walk/${problem.id}" data-link>따라 계산</a>
     </div>
     <div class="table-wrap">
@@ -332,8 +426,12 @@ function cpmPractice(id) {
     </div>
     <p id="cpm-result" class="lead"></p>
     <p style="display:flex;gap:10px;flex-wrap:wrap">
-      ${prev ? `<a class="btn ghost" href="#/cpm/practice/${prev.id}" data-link>이전 문제</a>` : `<a class="btn ghost" href="#/cpm/learn/float" data-link>여유시간 강의</a>`}
-      ${next ? `<a class="btn" href="#/cpm/practice/${next.id}" data-link>다음 문제</a>` : `<a class="btn" href="#/cpm/quiz" data-link>객관식</a>`}
+      ${
+        problem.id === "roll"
+          ? `<a class="btn ghost" href="#/cpm/draw" data-link>직접 그리기</a>`
+          : `${prev ? `<a class="btn ghost" href="#/cpm/practice/${prev.id}" data-link>이전 예시</a>` : `<a class="btn ghost" href="#/cpm/learn/tf" data-link>총여유 강의</a>`}
+      ${next ? `<a class="btn" href="#/cpm/practice/${next.id}" data-link>다음 예시</a>` : `<a class="btn" href="#/cpm/practice/roll" data-link>새 공정표</a>`}`
+      }
     </p>
   `;
 }
@@ -405,10 +503,7 @@ function cpmLab() {
 
 function renderLab(activities, withSvg = true) {
   const solved = solveCpm(activities);
-  const path = solved.rows
-    .filter((r) => r.critical)
-    .map((r) => `${r.name}(${r.from}-${r.to})`)
-    .join(" → ");
+  const path = criticalPathLabels(solved, true);
   return `
     ${withSvg ? cpmSvg(solved) : ""}
     <p><strong>공기 ${solved.project}</strong> · 주공정: ${path || "없음"}</p>
@@ -443,7 +538,7 @@ function bindCpmWalk() {
   });
   document.getElementById("walk-next")?.addEventListener("click", () => {
     if (walkUi.step >= steps.length - 1) {
-      location.hash = `#/cpm/practice/${id}`;
+      location.hash = `#/cpm/play/${id}`;
       return;
     }
     walkUi.step += 1;
@@ -490,7 +585,23 @@ function bindCpmPractice() {
       inp.value = inp.dataset.ans;
       inp.classList.remove("bad", "ok");
     });
-    result.textContent = "정답을 채워 두었습니다. 주공정 행은 금색 왼쪽 선입니다.";
+    sheet.querySelectorAll("tr[data-row]").forEach((tr) => {
+      const tf = tr.querySelector('input[data-k="tf"]');
+      if (tf && Number(tf.dataset.ans) === 0) tr.classList.add("is-crit");
+    });
+    result.textContent = "정답을 채웠습니다. TF가 0인 행이 주공정입니다.";
+  });
+  document.getElementById("cpm-new")?.addEventListener("click", () => {
+    const onRoll = location.hash === "#/cpm/practice/roll" || location.hash === "#/cpm/practice";
+    if (!onRoll) {
+      location.hash = "#/cpm/practice/roll";
+      return;
+    }
+    sessionNets.roll = rollNetwork(freshSeed());
+    practiceUi.id = null;
+    practiceUi.key = null;
+    app.innerHTML = cpmPractice("roll");
+    bindCpmPractice();
   });
   document.getElementById("cpm-check")?.addEventListener("click", () => {
     let ok = 0;
@@ -503,6 +614,10 @@ function bindCpmPractice() {
       inp.classList.toggle("ok", good);
       inp.classList.toggle("bad", !good);
       if (good) ok += 1;
+    });
+    sheet.querySelectorAll("tr[data-row]").forEach((tr) => {
+      const tf = tr.querySelector('input[data-k="tf"]');
+      if (tf && Number(tf.dataset.ans) === 0) tr.classList.add("is-crit");
     });
     result.textContent = `${ok} / ${total} 칸 정답. 주공정은 TF = 0 인 작업입니다.`;
   });
@@ -548,21 +663,2437 @@ function bindCpmLab() {
   });
 }
 
+function loadBest() {
+  try {
+    return JSON.parse(localStorage.getItem("cpm-play-best") || "{}");
+  } catch (e) {
+    return {};
+  }
+}
+
+function saveBest(id, percent) {
+  const all = loadBest();
+  const prev = all[id];
+  const beat = prev == null || percent > prev;
+  if (beat) {
+    all[id] = percent;
+    try {
+      localStorage.setItem("cpm-play-best", JSON.stringify(all));
+    } catch (e) {
+      /* ignore quota */
+    }
+  }
+  return { prev, beat };
+}
+
+function resetPlay(id) {
+  playUi.id = id;
+  playUi.step = 0;
+  playUi.score = 0;
+  playUi.streak = 0;
+  playUi.bestStreak = 0;
+  playUi.attempts = 0;
+  playUi.hinted = false;
+  playUi.status = "ask";
+  playUi.feedback = null;
+  playUi.done = false;
+  playUi.draft = "";
+  playUi.picked = [];
+  playUi.first = 0;
+  playUi.later = 0;
+  playUi.zero = 0;
+  playUi.recorded = false;
+  playUi.percent = 0;
+  playUi.beat = false;
+  playUi.prevBest = null;
+}
+
+function playRank(percent) {
+  if (percent === 100) return ["현장소장", "공기 감각이 정확합니다. 기사 문제도 이 순서면 됩니다."];
+  if (percent >= 80) return ["기사", "시험장에서도 전진, 공기, 후진, 여유 순서로 풀 수 있습니다."];
+  if (percent >= 50) return ["실습생", "최댓값과 최솟값을 다시 한 번 구분하면 주공정이 보입니다."];
+  return ["입문", "따라 계산하기에서 전진과 후진을 한 바퀴 보고 다시 도전해 보세요."];
+}
+
+function esc(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function playOpt(step) {
+  const showAnswer = playUi.status === "ok" || playUi.status === "revealed";
+  const revealTE = [...(step.revealTE || [])];
+  const revealTL = [...(step.revealTL || [])];
+  let popNode = null;
+  if (showAnswer && step.field === "te") {
+    revealTE.push(step.node);
+    popNode = step.node;
+  }
+  if (showAnswer && step.field === "tl") {
+    revealTL.push(step.node);
+    popNode = step.node;
+  }
+  return {
+    revealTE,
+    revealTL,
+    hlNode: step.hlNode ?? step.node,
+    hlFrom: step.hlFrom,
+    hlTo: step.hlTo,
+    showCrit: showAnswer && step.field === "crit",
+    popNode,
+  };
+}
+
+function memoChips(solved, opt) {
+  const chips = [];
+  solved.ids.forEach((n) => {
+    if (shown(opt.revealTE, n)) chips.push(`<span>TE(${n}) ${solved.TE[n]}</span>`);
+  });
+  solved.ids.forEach((n) => {
+    if (shown(opt.revealTL, n)) chips.push(`<span class="tl">TL(${n}) ${solved.TL[n]}</span>`);
+  });
+  if (!chips.length) return "";
+  return `<div class="memo">${chips.join("")}</div>`;
+}
+
+function playResult(problem, solved, steps) {
+  const max = steps.length * 100;
+  const [rank, line] = playRank(playUi.percent);
+  const idx = CPM_PROBLEMS.findIndex((p) => p.id === problem.id);
+  const next = CPM_PROBLEMS[idx + 1];
+  const record = playUi.beat
+    ? playUi.prevBest == null
+      ? "첫 기록이 남았습니다."
+      : "최고 기록을 바꿨습니다."
+    : `최고 기록은 ${playUi.prevBest}점입니다.`;
+  return `
+    <div id="cpm-play" data-id="${problem.id}">
+      <div class="kicker">도전 결과 · ${problem.level}</div>
+      <div class="play-top">
+        <h1>${rank}</h1>
+        <div class="play-stats"><span>점수 <b>${playUi.percent}</b> / 100</span></div>
+      </div>
+      <p class="lead">${line} ${record}</p>
+      <div class="stat-row">
+        <div class="stat"><b>${playUi.score}</b><span>${max}점 만점</span></div>
+        <div class="stat"><b>${playUi.first}</b><span>첫 시도 정답</span></div>
+        <div class="stat"><b>${playUi.bestStreak}</b><span>최장 연속</span></div>
+      </div>
+      ${playUi.zero ? `<p>해설을 보고 넘긴 칸이 ${playUi.zero}개 있습니다. 그 결합점만 다시 계산해 보세요.</p>` : ""}
+      <p>주공정선 <strong>${esc(criticalPathLabels(solved))}</strong> · 공기 ${solved.project}일</p>
+      <div class="net-panel">${cpmSvg(solved, { showCrit: true })}</div>
+      <p class="play-actions">
+        <button type="button" class="btn" id="play-restart">다시 도전</button>
+        <a class="btn ghost" href="#/cpm/walk/${problem.id}" data-link>따라 계산</a>
+        <a class="btn ghost" href="#/cpm" data-link>실습 목록</a>
+        ${
+          problem.id === "roll"
+            ? ""
+            : next
+              ? `<a class="btn" href="#/cpm/play/${next.id}" data-link>다음 네트워크</a>`
+              : `<a class="btn" href="#/cpm/quiz" data-link>객관식</a>`
+        }
+      </p>
+    </div>
+  `;
+}
+
+function cpmPlay(id) {
+  const problem = problemBy(id);
+  if (playUi.id !== problem.id || playUi.key !== problemKey(problem)) {
+    resetPlay(problem.id);
+    playUi.key = problemKey(problem);
+  }
+  const { solved, steps } = buildChallenge(problem);
+  if (playUi.done) return playResult(problem, solved, steps);
+  playUi.step = Math.max(0, Math.min(steps.length - 1, playUi.step));
+  const step = steps[playUi.step];
+  const opt = playOpt(step);
+  const pct = Math.round(((playUi.step + 1) / steps.length) * 100);
+  const max = steps.length * 100;
+  const asking = playUi.status === "ask";
+  const choices =
+    step.kind === "multi"
+      ? `<div class="choice-grid">${step.choices
+          .map((c) => {
+            const picked = playUi.picked.includes(c.id);
+            const right = step.answer.includes(c.id);
+            let cls = "";
+            if (!asking && right) cls = " correct";
+            else if (!asking && picked) cls = " wrong";
+            else if (picked) cls = " on";
+            return `<button type="button" class="choice-btn${cls}" ${asking ? `data-pick="${esc(c.id)}" aria-pressed="${picked}"` : "disabled"}>${esc(c.label)}</button>`;
+          })
+          .join("")}</div>`
+      : "";
+  const feedback = playUi.feedback
+    ? `<div class="play-feedback ${playUi.feedback.tone}" role="status">${esc(playUi.feedback.text)}</div>`
+    : "";
+  const actions = asking
+    ? `<form id="play-form" class="play-actions">
+        ${
+          step.kind === "number"
+            ? `<input id="play-answer" class="play-input${playUi.feedback && playUi.feedback.tone === "bad" ? " bad" : ""}" inputmode="numeric" autocomplete="off" aria-label="답" placeholder="일" value="${esc(playUi.draft)}">`
+            : ""
+        }
+        <button type="submit" class="btn">확인</button>
+        <button type="button" class="btn ghost" id="play-hint">힌트</button>
+        <button type="button" class="btn ghost" id="play-restart">처음부터</button>
+        ${playUi.hinted ? `<span class="hint-note">힌트를 봤습니다. 맞혀도 40점입니다.</span>` : ""}
+      </form>`
+    : `<div class="play-actions">
+        <button type="button" class="btn" id="play-next">${playUi.step === steps.length - 1 ? "결과 보기" : "다음"}</button>
+        <button type="button" class="btn ghost" id="play-restart">처음부터</button>
+      </div>`;
+  return `
+    <div id="cpm-play" data-id="${problem.id}">
+      <div class="kicker">${problem.level} · 한 칸 도전</div>
+      <div class="play-top">
+        <h1>${problem.title}</h1>
+        <div class="play-stats">
+          <span>점수 <b id="play-score">${playUi.score}</b> / ${max}</span>
+          <span>연속 <b id="play-streak">${playUi.streak}</b></span>
+        </div>
+      </div>
+      <p class="lead">빈칸에 숫자를 직접 넣습니다. 순서가 낯설면 <a href="#/cpm/walk/${problem.id}" data-link>따라 계산하기</a>를 먼저 보세요.</p>
+      <div class="walk-meta">
+        <span>${playUi.step + 1} / ${steps.length} · ${step.title}</span>
+        ${
+          problem.id === "roll"
+            ? ""
+            : `<span>${CPM_PROBLEMS.map(
+                (p) =>
+                  `<a href="#/cpm/play/${p.id}" data-link class="${p.id === problem.id ? "active" : ""}">${p.title}</a>`
+              ).join(" · ")}</span>`
+        }
+      </div>
+      <div class="progress"><span style="width:${pct}%"></span></div>
+      <p class="hint-note">첫 시도 100점 · 힌트나 다시 입력 40점 · 두 번 틀리면 해설 후 0점</p>
+      <div class="play-layout">
+        <div class="walk-card" id="play-card">
+          <p class="play-q">${step.prompt}</p>
+          <p class="play-rule">${step.rule}</p>
+          ${choices}
+          ${actions}
+          ${feedback}
+        </div>
+        <div>
+          ${memoChips(solved, opt)}
+          <div class="net-panel">${cpmSvg(solved, opt)}</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function award(step) {
+  const first = playUi.attempts === 0 && !playUi.hinted;
+  const pts = first ? 100 : 40;
+  if (first) {
+    playUi.streak += 1;
+    playUi.bestStreak = Math.max(playUi.bestStreak, playUi.streak);
+    playUi.first += 1;
+  } else {
+    playUi.streak = 0;
+    playUi.later += 1;
+  }
+  playUi.score += pts;
+  playUi.status = "ok";
+  let text = `+${pts} · ${step.success}`;
+  if (playUi.streak >= 2) text += ` ${playUi.streak}연속.`;
+  playUi.feedback = { tone: "ok", text };
+  playUi.draft = "";
+}
+
+function miss(step, yours) {
+  playUi.attempts += 1;
+  playUi.streak = 0;
+  if (playUi.attempts >= 2) {
+    playUi.zero += 1;
+    playUi.status = "revealed";
+    playUi.feedback = { tone: "bad", text: `${step.miss[1]} 오답노트에 넣어 두었습니다.` };
+    playUi.draft = "";
+    rememberNote({
+      id: noteKey(playUi.id, step),
+      kind: "play",
+      problemId: playUi.id,
+      field: step.field,
+      node: step.node ?? null,
+      hlFrom: step.hlFrom ?? null,
+      hlTo: step.hlTo ?? null,
+      title: step.title,
+      prompt: step.prompt,
+      yours: yours == null ? "" : String(yours),
+      why: step.miss[1],
+    });
+    return;
+  }
+  playUi.feedback = { tone: "bad", text: step.miss[0] };
+}
+
+function sameNames(a, b) {
+  return [...a].sort().join("|") === [...b].sort().join("|");
+}
+
+function gradeCurrent(steps) {
+  const step = steps[playUi.step];
+  if (!step || playUi.status !== "ask") return;
+  if (step.kind === "multi") {
+    if (!playUi.picked.length) {
+      playUi.feedback = { tone: "bad", text: "주공정이라고 생각하는 작업을 하나 이상 고르세요." };
+      return;
+    }
+    if (sameNames(playUi.picked, step.answer)) award(step);
+    else miss(step, playUi.picked.join(", "));
+    return;
+  }
+  const input = document.getElementById("play-answer");
+  const raw = (input ? input.value : playUi.draft).trim().replace(/일$/, "");
+  playUi.draft = input ? input.value : playUi.draft;
+  if (!/^-?\d+$/.test(raw)) {
+    playUi.feedback = { tone: "bad", text: "정수로 입력하세요." };
+    return;
+  }
+  if (Number(raw) === step.answer) award(step);
+  else miss(step, raw);
+}
+
+function advancePlay(steps, id) {
+  if (playUi.done || playUi.status === "ask") return;
+  playUi.step += 1;
+  playUi.attempts = 0;
+  playUi.hinted = false;
+  playUi.status = "ask";
+  playUi.feedback = null;
+  playUi.draft = "";
+  playUi.picked = [];
+  if (playUi.step >= steps.length) {
+    playUi.done = true;
+    playUi.percent = Math.round((playUi.score / (steps.length * 100)) * 100);
+    if (!playUi.recorded) {
+      playUi.recorded = true;
+      const saved = saveBest(id, playUi.percent);
+      playUi.beat = saved.beat;
+      playUi.prevBest = saved.prev;
+    }
+  }
+}
+
+function bindCpmPlay() {
+  const root = document.getElementById("cpm-play");
+  if (!root) return;
+  const id = root.dataset.id;
+  const { steps } = buildChallenge(problemBy(id));
+  const paint = () => {
+    app.innerHTML = cpmPlay(id);
+    bindCpmPlay();
+    if (!playUi.done) {
+      document.getElementById("play-card")?.scrollIntoView({ block: "nearest" });
+      const el =
+        document.getElementById("play-answer") ||
+        document.getElementById("play-next") ||
+        document.querySelector("#play-form button[type=submit]");
+      el?.focus();
+      if (el && el.select) el.select();
+    }
+  };
+  root.querySelectorAll("[data-pick]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const name = btn.getAttribute("data-pick");
+      const i = playUi.picked.indexOf(name);
+      if (i >= 0) playUi.picked.splice(i, 1);
+      else playUi.picked.push(name);
+      const on = playUi.picked.includes(name);
+      btn.classList.toggle("on", on);
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
+    });
+  });
+  document.getElementById("play-hint")?.addEventListener("click", () => {
+    const step = steps[playUi.step];
+    if (!step || playUi.status !== "ask") return;
+    playUi.hinted = true;
+    playUi.feedback = { tone: "neutral", text: step.hint };
+    const input = document.getElementById("play-answer");
+    if (input) playUi.draft = input.value;
+    paint();
+  });
+  document.getElementById("play-form")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    gradeCurrent(steps);
+    paint();
+  });
+  document.getElementById("play-next")?.addEventListener("click", () => {
+    advancePlay(steps, id);
+    paint();
+  });
+  document.getElementById("play-restart")?.addEventListener("click", () => {
+    resetPlay(id);
+    paint();
+  });
+}
+
+function noteKey(problemId, step) {
+  const node = step.node == null ? "" : step.node;
+  const span = step.hlFrom == null ? "" : `${step.hlFrom}-${step.hlTo}`;
+  return `play:${problemId}:${step.field}:${node}:${span}`;
+}
+
+function noteWhen(at) {
+  const d = new Date(at);
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return `${d.getMonth() + 1}/${d.getDate()} ${hh}:${mm}`;
+}
+
+const noteUi = { id: null, text: "" };
+
+function noteBundle(note) {
+  if (note.kind !== "play") return null;
+  const problem = CPM_PROBLEMS.find((p) => p.id === note.problemId);
+  if (!problem) return null;
+  const built = buildChallenge(problem);
+  const step = built.steps.find((s) => noteKey(note.problemId, s) === note.id);
+  if (!step) return null;
+  return { problem, solved: built.solved, step };
+}
+
+function notesView() {
+  const notes = loadNotes();
+  if (!notes.length) {
+    return `
+      <div class="kicker">REVIEW</div>
+      <h1>오답노트</h1>
+      <p class="lead">아직 비어 있습니다. 한 칸 도전에서 해설을 보고 넘어간 칸과, 객관식에서 틀린 문제가 여기에 모입니다.</p>
+      <p>
+        <a class="btn" href="#/cpm/play/roll" data-link>한 칸 연습</a>
+        <a class="btn ghost" href="#/cpm/quiz" data-link>객관식</a>
+      </p>
+    `;
+  }
+  return `
+    <div class="kicker">REVIEW</div>
+    <h1>오답노트</h1>
+    <p class="lead">틀린 문제 ${notes.length}개입니다. 다시 맞히면 노트에서 빠집니다.</p>
+    ${notes.map(noteCard).join("")}
+  `;
+}
+
+function noteCard(note) {
+  const feedback =
+    noteUi.id === note.id && noteUi.text
+      ? `<div class="play-feedback bad" role="status">${esc(noteUi.text)}</div>`
+      : "";
+  if (note.kind === "quiz") {
+    return `
+      <article class="note-card">
+        <p class="hint-note">${noteWhen(note.at)} · 객관식</p>
+        <h3>${esc(note.q)}</h3>
+        <p>지난번 선택: ${esc(note.choices[note.yours] || "")}</p>
+        <div class="options">
+          ${note.choices
+            .map(
+              (c, j) =>
+                `<button type="button" data-note-quiz="${esc(note.id)}" data-choice="${j}">${esc(c)}</button>`
+            )
+            .join("")}
+        </div>
+        ${feedback}
+      </article>
+    `;
+  }
+  const bundle = noteBundle(note);
+  if (!bundle) {
+    return `<article class="note-card"><p>이 문제는 더 이상 연습 목록에 없습니다.</p><button type="button" class="btn ghost" data-note-drop="${esc(note.id)}">노트에서 빼기</button></article>`;
+  }
+  const { solved, step } = bundle;
+  const choices =
+    step.kind === "multi"
+      ? `<div class="choice-grid">${step.choices
+          .map(
+            (c) =>
+              `<button type="button" class="choice-btn" data-note-pick="${esc(c.id)}">${esc(c.label)}</button>`
+          )
+          .join("")}</div>`
+      : `<input class="play-input" name="answer" inputmode="numeric" autocomplete="off" aria-label="답" placeholder="일">`;
+  return `
+    <article class="note-card">
+      <p class="hint-note">${noteWhen(note.at)} · ${esc(bundle.problem.title)}</p>
+      <h3>${esc(step.title)}</h3>
+      <p class="play-q">${esc(step.prompt)}</p>
+      <p class="play-rule">${esc(step.rule)}</p>
+      <p>지난번 답: ${esc(note.yours || "(없음)")}</p>
+      <div class="net-panel">${cpmSvg(solved, {
+        revealTE: step.revealTE,
+        revealTL: step.revealTL,
+        hlNode: step.hlNode ?? step.node,
+        hlFrom: step.hlFrom,
+        hlTo: step.hlTo,
+        showCrit: false,
+      })}</div>
+      <form class="play-actions" data-note-form="${esc(note.id)}">
+        ${choices}
+        <button type="submit" class="btn">다시 채점</button>
+      </form>
+      ${feedback}
+    </article>
+  `;
+}
+
+const DRAW_HELP = {
+  node: "빈 곳을 누르면 결합점이 생깁니다. 점을 끌면 자리를 옮길 수 있습니다.",
+  arrow: "시작 결합점을 누르고, 끝 결합점을 누른 뒤, 그 화살에 올릴 작업을 고르세요.",
+  dummy: "시작 결합점을 누르고 끝 결합점을 누르세요. 더미는 기간 0인 점선입니다. 하는 일 없이 순서만 잇습니다.",
+  erase: "지울 화살표나 결합점을 누르세요. 결합점을 지우면 붙은 화살표도 함께 지워집니다.",
+};
+
+function resetDraw(keepChart) {
+  drawUi.problem = rollNetwork(freshSeed());
+  drawUi.nodes = [{ id: 1, x: 88, y: 220 }];
+  drawUi.arrows = [];
+  drawUi.nextNode = 2;
+  drawUi.nextArrow = 1;
+  drawUi.tool = "node";
+  drawUi.arm = null;
+  drawUi.pending = null;
+  drawUi.lines = [];
+  drawUi.ok = false;
+  drawUi.showAnswer = false;
+  drawUi.tableMsg = "";
+  drawUi.panel = "table";
+  drawUi.answers = [];
+  if (!keepChart) ganttStore.draw = null;
+}
+
+function diagramArrows() {
+  return drawUi.arrows.map((a) => ({
+    name: a.dummy ? "Dummy" : a.job,
+    from: a.from,
+    to: a.to,
+    duration: a.dummy ? 0 : a.duration,
+    dummy: !!a.dummy,
+  }));
+}
+
+function drawBoard() {
+  const arrows = drawUi.arrows
+    .map((a) => {
+      const p1 = drawUi.nodes.find((n) => n.id === a.from);
+      const p2 = drawUi.nodes.find((n) => n.id === a.to);
+      if (!p1 || !p2) return "";
+      const dx = p2.x - p1.x;
+      const dy = p2.y - p1.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const ux = dx / len;
+      const uy = dy / len;
+      const x1 = p1.x + ux * 28;
+      const y1 = p1.y + uy * 28;
+      const x2 = p2.x - ux * 28;
+      const y2 = p2.y - uy * 28;
+      const color = a.dummy ? "#6d6458" : "#1f4f86";
+      const label = a.dummy ? "Dummy" : `${a.job} (${a.duration})`;
+      const dash = a.dummy ? ' stroke-dasharray="6 5"' : "";
+      return `<line data-arrow="${a.id}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="transparent" stroke-width="16"/>
+        <line data-arrow="${a.id}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="2.2"${dash} marker-end="url(#draw-head)"/>
+        <text data-arrow="${a.id}" x="${(x1 + x2) / 2}" y="${(y1 + y2) / 2 - 10}" text-anchor="middle" fill="${color}" font-size="13">${esc(label)}</text>`;
+    })
+    .join("");
+  const nodes = drawUi.nodes
+    .map((n) => {
+      const on = drawUi.arm === n.id;
+      return `<g data-node="${n.id}" transform="translate(${n.x},${n.y})">
+        <circle r="26" fill="${on ? "#f3e2c4" : "#fbf6ec"}" stroke="${on ? "#9a3e24" : "#1f4f86"}" stroke-width="2"/>
+        <text y="6" text-anchor="middle" fill="#2a241c" font-size="16" font-weight="700">${n.id}</text>
+      </g>`;
+    })
+    .join("");
+  return `<svg id="draw-board" class="draw-board" viewBox="0 0 980 440" role="img" aria-label="공정표 그리는 판">
+    <defs>
+      <marker id="draw-head" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+        <path d="M0,0 L8,4 L0,8" fill="#1f4f86"/>
+      </marker>
+    </defs>
+    <rect class="draw-bg" x="0" y="0" width="980" height="440" fill="#fbf6ec"/>
+    ${arrows}${nodes}
+  </svg>`;
+}
+
+function drawView() {
+  if (!drawUi.problem) resetDraw();
+  const jobs = drawUi.problem.jobs;
+  const used = new Set(drawUi.arrows.filter((a) => !a.dummy).map((a) => a.job));
+  const pendingJobs = jobs.filter((j) => !used.has(j.name));
+  const picker = drawUi.pending
+    ? `<div class="draw-pick" role="group" aria-label="이 화살표의 작업">
+        <span>결합점 ${drawUi.pending.from} → ${drawUi.pending.to} 에 올릴 작업</span>
+        ${
+          pendingJobs.length
+            ? pendingJobs
+                .map(
+                  (j) =>
+                    `<button type="button" class="btn" data-pick-job="${esc(j.name)}">${esc(j.name)} · ${j.duration}일</button>`
+                )
+                .join("")
+            : `<span>남은 작업이 없습니다. 더미를 쓰거나 화살표를 지우세요.</span>`
+        }
+        <button type="button" class="btn ghost" id="draw-cancel">취소</button>
+      </div>`
+    : "";
+  const grade = drawUi.lines.length
+    ? `<ul class="grade-list${drawUi.ok ? " ok" : ""}">${drawUi.lines.map((l) => `<li>${esc(l)}</li>`).join("")}</ul>`
+    : "";
+  const table = drawUi.ok
+    ? (() => {
+        let solved;
+        try {
+          solved = solveCpm(diagramArrows());
+        } catch (e) {
+          return "";
+        }
+        return `<div class="table-wrap">
+          <table class="cpm-table" id="draw-sheet">
+            <thead><tr><th>작업</th><th>i-j</th><th>D</th><th>ES</th><th>EF</th><th>LS</th><th>LF</th><th>TF</th><th>FF</th></tr></thead>
+            <tbody>
+              ${solved.rows
+                .map(
+                  (r) => `<tr data-row>
+                    <td>${esc(r.dummy ? "Dummy" : r.name)}</td>
+                    <td>${r.from}-${r.to}</td>
+                    <td>${r.duration}</td>
+                    ${["es", "ef", "ls", "lf", "tf", "ff"]
+                      .map(
+                        (k) =>
+                          `<td><input inputmode="numeric" data-k="${k}" data-ans="${r[k]}" aria-label="${esc(r.dummy ? "Dummy" : r.name)} ${k}"></td>`
+                      )
+                      .join("")}
+                  </tr>`
+                )
+                .join("")}
+            </tbody>
+          </table>
+        </div>
+        <p><button type="button" class="btn" id="draw-grade-table">표 채점</button></p>
+        <p id="draw-table-msg" class="lead">${esc(drawUi.tableMsg)}</p>`;
+      })()
+    : "";
+  const result =
+    drawUi.ok || ganttStore.draw || ganttStore.solve
+      ? `${resultTabs("draw", drawUi.panel)}
+        ${
+          drawUi.panel === "gantt"
+            ? ganttPanel("draw")
+            : table || `<p class="lead">순서 채점이 맞으면 계산표가 열립니다. 간트차트는 맞춘 공정표로 그립니다.</p>`
+        }`
+      : "";
+  const answer = drawUi.showAnswer
+    ? `<div class="net-panel">${cpmSvg(solveCpm(drawUi.problem.activities), {
+        revealTE: [],
+        revealTL: [],
+        showCrit: false,
+        caption: "모양은 달라도 됩니다. 작업이 끝나는 점과 다음 작업이 시작하는 점의 순서가 목록과 같으면 맞습니다.",
+      })}</div>`
+    : "";
+  return `
+    <div class="kicker">${drawUi.problem.level} · 직접 그리기</div>
+    <h1>${esc(drawUi.problem.title)}</h1>
+    <p class="lead">작업 목록만 보고 공정표를 만듭니다. 바로 앞에 적힌 일이 모두 끝난 결합점에서 그 작업의 화살이 출발해야 합니다. 화살 두 개가 같은 두 점을 잇게 되면 더미로 다른 점을 거쳐 가세요.</p>
+    <div class="draw-layout">
+      <div>
+        <div class="draw-tools">
+          ${[
+            ["node", "결합점"],
+            ["arrow", "작업 화살표"],
+            ["dummy", "더미"],
+            ["erase", "지우기"],
+          ]
+            .map(
+              ([id, label]) =>
+                `<button type="button" class="btn ghost${drawUi.tool === id ? " on" : ""}" data-tool="${id}" aria-pressed="${drawUi.tool === id}">${label}</button>`
+            )
+            .join("")}
+        </div>
+        <p class="draw-help">${DRAW_HELP[drawUi.tool]}</p>
+        ${drawBoard()}
+        ${picker}
+        <p style="display:flex;gap:10px;flex-wrap:wrap">
+          <button type="button" class="btn" id="draw-grade">순서 채점</button>
+          <button type="button" class="btn ghost" id="draw-answer">${drawUi.showAnswer ? "정답 숨기기" : "정답 공정표"}</button>
+          <button type="button" class="btn ghost" id="draw-clear">판 비우기</button>
+          <button type="button" class="btn ghost" id="draw-new">다른 문제</button>
+        </p>
+        ${grade}
+        ${result}
+        ${answer}
+      </div>
+      <aside class="draw-jobs">
+        <h3>해야 할 일</h3>
+        <p>바로 앞 일이 끝나면 시작할 수 있습니다. 목록에 없는 일은 기다리지 않습니다.</p>
+        <ul class="job-list">
+          ${jobs
+            .map((j) => {
+              const preds = j.preds.length ? j.preds.join(", ") : "없음";
+              return `<li class="${used.has(j.name) ? "used" : ""}"><b>${esc(j.name)}</b> ${j.duration}일<small>바로 앞: ${esc(preds)}</small></li>`;
+            })
+            .join("")}
+        </ul>
+      </aside>
+    </div>
+  `;
+}
+
+function paintDraw() {
+  if (!location.hash.startsWith("#/cpm/draw")) return;
+  const values = [...document.querySelectorAll("#draw-sheet input")].map((i) => i.value);
+  if (values.length) drawUi.answers = values;
+  app.innerHTML = drawView();
+  bindDraw();
+  document.querySelectorAll("#draw-sheet input").forEach((inp, i) => {
+    inp.value = (drawUi.answers && drawUi.answers[i]) || "";
+  });
+}
+
+function bindDraw() {
+  bindResultViews(paintDraw);
+  const svg = document.getElementById("draw-board");
+  if (!svg || !drawUi.problem) return;
+  const pointOf = (event) => {
+    const pt = svg.createSVGPoint();
+    pt.x = event.clientX;
+    pt.y = event.clientY;
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return { x: 80, y: 80 };
+    const p = pt.matrixTransform(ctm.inverse());
+    return { x: p.x, y: p.y };
+  };
+  document.querySelectorAll("[data-tool]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      drawUi.tool = btn.getAttribute("data-tool");
+      drawUi.arm = null;
+      drawUi.pending = null;
+      paintDraw();
+    });
+  });
+  document.getElementById("draw-cancel")?.addEventListener("click", () => {
+    drawUi.pending = null;
+    drawUi.arm = null;
+    paintDraw();
+  });
+  document.querySelectorAll("[data-pick-job]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const name = btn.getAttribute("data-pick-job");
+      const job = drawUi.problem.jobs.find((j) => j.name === name);
+      if (!drawUi.pending || !job) return;
+      drawUi.arrows.push({
+        id: drawUi.nextArrow,
+        from: drawUi.pending.from,
+        to: drawUi.pending.to,
+        dummy: false,
+        job: job.name,
+        duration: job.duration,
+      });
+      drawUi.nextArrow += 1;
+      drawUi.pending = null;
+      drawUi.arm = null;
+      drawUi.ok = false;
+      drawUi.lines = [];
+      drawUi.tableMsg = "";
+      ganttStore.draw = null;
+      paintDraw();
+    });
+  });
+  document.getElementById("draw-grade")?.addEventListener("click", () => {
+    const graded = gradeDiagram(drawUi.problem.jobs, diagramArrows());
+    drawUi.ok = graded.ok;
+    drawUi.lines = graded.lines;
+    drawUi.tableMsg = "";
+    if (graded.ok) {
+      try {
+        rememberGantt("draw", solveCpm(diagramArrows()), drawUi.problem.title);
+      } catch (e) {
+        ganttStore.draw = null;
+      }
+    } else ganttStore.draw = null;
+    paintDraw();
+  });
+  document.getElementById("draw-answer")?.addEventListener("click", () => {
+    drawUi.showAnswer = !drawUi.showAnswer;
+    paintDraw();
+  });
+  document.getElementById("draw-clear")?.addEventListener("click", () => {
+    const problem = drawUi.problem;
+    resetDraw();
+    drawUi.problem = problem;
+    paintDraw();
+  });
+  document.getElementById("draw-new")?.addEventListener("click", () => {
+    resetDraw();
+    paintDraw();
+  });
+  document.getElementById("draw-grade-table")?.addEventListener("click", () => {
+    const sheet = document.getElementById("draw-sheet");
+    const msg = document.getElementById("draw-table-msg");
+    if (!sheet || !msg) return;
+    let ok = 0;
+    let total = 0;
+    sheet.querySelectorAll("input[data-ans]").forEach((inp) => {
+      total += 1;
+      const good = inp.value !== "" && Number(inp.value) === Number(inp.dataset.ans);
+      inp.classList.toggle("ok", good);
+      inp.classList.toggle("bad", !good);
+      if (good) ok += 1;
+    });
+    sheet.querySelectorAll("tr[data-row]").forEach((tr) => {
+      const tf = tr.querySelector('input[data-k="tf"]');
+      if (tf && Number(tf.dataset.ans) === 0) tr.classList.add("is-crit");
+    });
+    drawUi.tableMsg = `${ok} / ${total} 칸 정답. TF가 0인 작업이 주공정입니다.`;
+    msg.textContent = drawUi.tableMsg;
+  });
+
+  let dragging = null;
+  svg.addEventListener("pointerdown", (event) => {
+    const nodeEl = event.target.closest("[data-node]");
+    const arrowEl = event.target.closest("[data-arrow]");
+    if (drawUi.tool === "erase") {
+      if (arrowEl) {
+        const id = Number(arrowEl.getAttribute("data-arrow"));
+        drawUi.arrows = drawUi.arrows.filter((a) => a.id !== id);
+      } else if (nodeEl) {
+        const id = Number(nodeEl.getAttribute("data-node"));
+        drawUi.nodes = drawUi.nodes.filter((n) => n.id !== id);
+        drawUi.arrows = drawUi.arrows.filter((a) => a.from !== id && a.to !== id);
+      } else return;
+      drawUi.arm = null;
+      drawUi.pending = null;
+      drawUi.ok = false;
+      drawUi.lines = [];
+      drawUi.tableMsg = "";
+      ganttStore.draw = null;
+      paintDraw();
+      return;
+    }
+    if (nodeEl && drawUi.tool === "node") {
+      dragging = Number(nodeEl.getAttribute("data-node"));
+      svg.setPointerCapture(event.pointerId);
+      return;
+    }
+    if (nodeEl && (drawUi.tool === "arrow" || drawUi.tool === "dummy")) {
+      const id = Number(nodeEl.getAttribute("data-node"));
+      if (drawUi.arm == null) {
+        drawUi.arm = id;
+        drawUi.pending = null;
+        paintDraw();
+        return;
+      }
+      if (drawUi.arm === id) {
+        drawUi.arm = null;
+        paintDraw();
+        return;
+      }
+      const from = drawUi.arm;
+      const to = id;
+      drawUi.arm = null;
+      if (drawUi.arrows.some((a) => a.from === from && a.to === to)) {
+        drawUi.lines = [`결합점 ${from}에서 ${to}로는 이미 화살이 있습니다. 더미로 다른 점을 거쳐 가세요.`];
+        drawUi.ok = false;
+        paintDraw();
+        return;
+      }
+      if (drawUi.tool === "dummy") {
+        drawUi.arrows.push({
+          id: drawUi.nextArrow,
+          from,
+          to,
+          dummy: true,
+          job: null,
+          duration: 0,
+        });
+        drawUi.nextArrow += 1;
+        drawUi.ok = false;
+        drawUi.lines = [];
+        drawUi.tableMsg = "";
+        ganttStore.draw = null;
+        paintDraw();
+        return;
+      }
+      drawUi.pending = { from, to };
+      paintDraw();
+      return;
+    }
+    if (!nodeEl && !arrowEl && drawUi.tool === "node") {
+      const pt = pointOf(event);
+      const x = Math.max(40, Math.min(940, pt.x));
+      const y = Math.max(40, Math.min(400, pt.y));
+      if (drawUi.nodes.some((n) => Math.hypot(n.x - x, n.y - y) < 52)) return;
+      drawUi.nodes.push({ id: drawUi.nextNode, x, y });
+      drawUi.nextNode += 1;
+      paintDraw();
+    }
+  });
+  svg.addEventListener("pointermove", (event) => {
+    if (dragging == null) return;
+    const node = drawUi.nodes.find((n) => n.id === dragging);
+    if (!node) return;
+    const pt = pointOf(event);
+    node.x = Math.max(40, Math.min(940, pt.x));
+    node.y = Math.max(40, Math.min(400, pt.y));
+    const group = svg.querySelector(`[data-node="${node.id}"]`);
+    if (group) group.setAttribute("transform", `translate(${node.x},${node.y})`);
+  });
+  svg.addEventListener("pointerup", () => {
+    if (dragging == null) return;
+    dragging = null;
+    paintDraw();
+  });
+}
+
+let lastHash = "";
+
+const solveUi = {
+  imageUrl: "",
+  status: "",
+  error: "",
+  built: null,
+  draft: null,
+  draftError: "",
+  step: 0,
+  panel: "table",
+  readId: 0,
+  worker: null,
+};
+
+const EXAM_HEADER = /^(작업명|작업|선행작업|선행|소요일수|소요시간|작업시간|작업일수|소요일|기간|일수|정상|일|데이터|활동|activity|duration|pred|name)$/i;
+
+function normExamToken(token) {
+  return String(token || "")
+    .trim()
+    .replace(/[.:;]+$/g, "")
+    .replace(/^작업/, "")
+    .toUpperCase();
+}
+
+function examDuration(token) {
+  const matched = String(token || "").match(/^(\d{1,3})일?$/);
+  if (!matched) return null;
+  const value = Number(matched[1]);
+  if (value < 1 || value > 999) return null;
+  return value;
+}
+
+function emptyPred(token) {
+  return /^[-–—~.~×xX없음무없다|ㅣ]+$/.test(String(token || "").trim());
+}
+
+function repairGlyph(token) {
+  return String(token || "").trim();
+}
+
+function isDashToken(token) {
+  return emptyPred(token);
+}
+
+function examName(token) {
+  const name = normExamToken(token);
+  if (!name || emptyPred(name) || EXAM_HEADER.test(name)) return "";
+  if (/^[A-Z]$/.test(name)) return name;
+  if (/^[가-힣]{1,8}$/.test(name)) return name;
+  return "";
+}
+
+function explodeExamToken(token) {
+  const text = String(token || "").trim();
+  const stuck = text.match(/^([A-Za-z가-힣]{1,8})[-–—](\d{1,3}일?)$/);
+  if (stuck) return [stuck[1], stuck[2]];
+  const letterDuration = text.match(/^([A-Za-z])(\d{1,3})$/);
+  if (letterDuration) return [letterDuration[1], letterDuration[2]];
+  return text.split(/[,，、·∙•/]/).filter(Boolean);
+}
+
+function jobsFromText(text) {
+  const jobs = [];
+  const seen = new Set();
+  String(text || "")
+    .split(/\n/)
+    .forEach((line) => {
+      const tokens = line
+        .replace(/([A-Za-z])\1+/gi, "$1")
+        .replace(/([A-Za-z])\.(?=[A-Za-z])/g, "$1,")
+        .replace(/[|]/g, " ")
+        .replace(/[()（）[\]{}]/g, " ")
+        .split(/\s+/)
+        .flatMap(explodeExamToken)
+        .map((token) => token.trim())
+        .filter(Boolean)
+        .filter((token) => !EXAM_HEADER.test(token) && !EXAM_HEADER.test(normExamToken(token)));
+      if (tokens.length < 2 || tokens.length > 8) return;
+      let durIndex = -1;
+      let duration = null;
+      for (let index = tokens.length - 1; index >= 0; index -= 1) {
+        const value = examDuration(fixDigits(tokens[index]));
+        if (value != null) {
+          duration = value;
+          durIndex = index;
+          break;
+        }
+      }
+      if (duration == null) return;
+      const head = tokens.filter((_, index) => index !== durIndex);
+      if (!head.length) return;
+      const name = examName(repairGlyph(head[0]));
+      if (!name || seen.has(name)) return;
+      const preds = [];
+      for (const token of head.slice(1)) {
+        const repaired = repairGlyph(token);
+        if (isDashToken(repaired) || isDashToken(token)) continue;
+        const activity = examName(repaired);
+        if (activity && activity !== name) {
+          preds.push(activity);
+          continue;
+        }
+        const packed = normExamToken(repaired);
+        if (/^[A-Z]{2,4}$/.test(packed)) preds.push(packed);
+      }
+      seen.add(name);
+      jobs.push({ name, duration, preds: [...new Set(preds)] });
+    });
+  return jobs;
+}
+
+function refineExamJobs(jobs) {
+  const names = new Set(jobs.map((job) => job.name));
+  let dropped = 0;
+  const refined = jobs.map((job) => ({
+    name: job.name,
+    duration: job.duration,
+    preds: [...new Set(job.preds.flatMap((pred) => {
+      if (names.has(pred)) return [pred];
+      if (/^[A-Z]{2,4}$/.test(pred) && [...pred].every((letter) => names.has(letter))) return [...pred];
+      dropped += 1;
+      return [];
+    }))].filter((pred) => pred !== job.name),
+  }));
+  refined.dropped = dropped;
+  return refined;
+}
+
+function fixDigits(token) {
+  return String(token || "").replace(/\s/g, "");
+}
+
+function wordTable(words) {
+  const items = (words || []).filter((word) => word.text && String(word.text).trim() && word.bbox && (word.confidence == null || word.confidence >= 0));
+  if (items.length < 4) return [];
+  const heights = items.map((word) => Math.max(8, word.bbox.y1 - word.bbox.y0)).sort((a, b) => a - b);
+  const rowGap = heights[Math.floor(heights.length / 2)] * 0.7;
+  const rows = [];
+  items
+    .slice()
+    .sort((a, b) => a.bbox.y0 - b.bbox.y0 || a.bbox.x0 - b.bbox.x0)
+    .forEach((word) => {
+      const y = (word.bbox.y0 + word.bbox.y1) / 2;
+      const row = rows.find((item) => Math.abs(item.y - y) < rowGap);
+      if (row) row.words.push(word);
+      else rows.push({ y, words: [word] });
+    });
+  const centers = items.map((word) => (word.bbox.x0 + word.bbox.x1) / 2).sort((a, b) => a - b);
+  const span = Math.max(1, centers[centers.length - 1] - centers[0]);
+  const splitAt = Math.max(36, span * 0.12);
+  const groups = [];
+  centers.forEach((x) => {
+    const last = groups[groups.length - 1];
+    if (!last || x - last[last.length - 1] > splitAt) groups.push([x]);
+    else last.push(x);
+  });
+  const columns = groups.map((group) => group.reduce((sum, x) => sum + x, 0) / group.length);
+  if (columns.length < 2) return [];
+  return rows.map((row) => {
+    const cells = columns.map(() => []);
+    row.words
+      .slice()
+      .sort((a, b) => a.bbox.x0 - b.bbox.x0)
+      .forEach((word) => {
+        const x = (word.bbox.x0 + word.bbox.x1) / 2;
+        let best = 0;
+        let dist = Infinity;
+        columns.forEach((center, index) => {
+          const gap = Math.abs(center - x);
+          if (gap < dist) {
+            dist = gap;
+            best = index;
+          }
+        });
+        cells[best].push(String(word.text).trim());
+      });
+    return cells.map((cell) => cell.join(""));
+  });
+}
+
+function jobsFromWordGrid(words) {
+  const table = wordTable(words);
+  if (table.length < 2) return [];
+  const headerAt = table.findIndex((row) => row.some((cell) => /작업|선행|기간|일수|시간|pred|day|dur|activity/i.test(cell)));
+  let nameCol = 0;
+  let predCol = -1;
+  let durCol = -1;
+  if (headerAt >= 0) {
+    table[headerAt].forEach((cell, index) => {
+      if (/선행|pred/i.test(cell)) predCol = index;
+      else if (/기간|일수|시간|day|dur/i.test(cell)) durCol = index;
+      else if (/작업|activity|name|명/i.test(cell)) nameCol = index;
+    });
+  }
+  if (durCol < 0) {
+    let best = -1;
+    let score = -1;
+    const width = Math.max(...table.map((row) => row.length));
+    for (let index = 0; index < width; index += 1) {
+      const count = table.filter((row) => examDuration(fixDigits(row[index] || "")) != null).length;
+      if (count > score) {
+        score = count;
+        best = index;
+      }
+    }
+    durCol = best;
+  }
+  if (nameCol < 0 || nameCol === durCol) {
+    nameCol = table[0].findIndex((_, index) => index !== durCol);
+  }
+  if (predCol < 0) {
+    predCol = table[0].findIndex((_, index) => index !== durCol && index !== nameCol);
+  }
+  const jobs = [];
+  const seen = new Set();
+  table.forEach((row, index) => {
+    if (index === headerAt) return;
+    const name = examName(repairGlyph(String(row[nameCol] || "").replace(/([A-Za-z])\1+/gi, "$1")));
+    const duration = examDuration(fixDigits(row[durCol] || ""));
+    if (!name || duration == null || seen.has(name)) return;
+    seen.add(name);
+    const predText = predCol >= 0 ? row[predCol] || "" : "";
+    const preds = predText
+      .replace(/([A-Za-z])\1+/gi, "$1")
+      .replace(/([A-Za-z])\.(?=[A-Za-z])/g, "$1,")
+      .split(/[,，、·∙•/\s]+/)
+      .filter((part) => !isDashToken(part))
+      .map((part) => examName(repairGlyph(part)))
+      .filter((pred) => pred && pred !== name);
+    jobs.push({ name, duration, preds });
+  });
+  return jobs;
+}
+
+function linesFromOcrWords(words) {
+  const items = (words || []).filter((word) => word.text && String(word.text).trim() && (word.confidence == null || word.confidence >= 0));
+  const rows = [];
+  items
+    .slice()
+    .sort((a, b) => a.bbox.y0 - b.bbox.y0 || a.bbox.x0 - b.bbox.x0)
+    .forEach((word) => {
+      const y = (word.bbox.y0 + word.bbox.y1) / 2;
+      const height = Math.max(8, word.bbox.y1 - word.bbox.y0);
+      const row = rows.find((item) => Math.abs(item.y - y) < height * 0.8);
+      if (row) row.words.push(word);
+      else rows.push({ y, words: [word] });
+    });
+  return rows
+    .map((row) =>
+      row.words
+        .sort((a, b) => a.bbox.x0 - b.bbox.x0)
+        .map((word) => String(word.text).trim())
+        .join(" ")
+    )
+    .join("\n");
+}
+
+function readingScore(jobs) {
+  return examScore(refineExamJobs((jobs || []).map((job) => ({ name: job.name, duration: job.duration, preds: [...(job.preds || [])] }))));
+}
+
+function jobsFromOcr(data) {
+  const texts = [data && data.text, data && data.lines ? data.lines.map((line) => line.text).join("\n") : "", linesFromOcrWords(data && data.words)];
+  let best = jobsFromWordGrid(data && data.words);
+  texts.forEach((text) => {
+    const jobs = jobsFromText(text);
+    if (readingScore(jobs) > readingScore(best)) best = jobs;
+  });
+  return best;
+}
+
+function modeValue(values) {
+  const tally = new Map();
+  values.forEach((value) => tally.set(value, (tally.get(value) || 0) + 1));
+  let best = values[0];
+  let count = -1;
+  tally.forEach((n, value) => {
+    if (n > count) {
+      count = n;
+      best = value;
+    }
+  });
+  return best;
+}
+
+function assembleExamJobs(lists) {
+  const usable = (lists || []).filter((jobs) => jobs && jobs.length);
+  if (!usable.length) return [];
+  const counts = {};
+  usable.forEach((jobs) => {
+    const seen = new Set();
+    jobs.forEach((job) => {
+      if (seen.has(job.name)) return;
+      seen.add(job.name);
+      counts[job.name] = (counts[job.name] || 0) + 1;
+    });
+  });
+  const ranked = usable
+    .map((jobs) => ({ jobs, score: readingScore(jobs) }))
+    .sort((a, b) => b.score - a.score);
+  const chosen = new Map();
+  const consider = (job) => {
+    if (!job || !job.name) return;
+    if (!chosen.has(job.name)) chosen.set(job.name, { name: job.name, durations: [], preds: [] });
+    const slot = chosen.get(job.name);
+    slot.durations.push(job.duration);
+    slot.preds.push([...(job.preds || [])]);
+  };
+  const keepName = (name) => counts[name] >= 2 || ranked[0].jobs.some((job) => job.name === name);
+  usable.forEach((jobs) => {
+    jobs.forEach((job) => {
+      if (keepName(job.name)) consider(job);
+    });
+  });
+  const remember = (name) => {
+    if (chosen.has(name)) return false;
+    return usable.some((jobs) => {
+      const found = jobs.find((job) => job.name === name);
+      if (!found) return false;
+      consider(found);
+      return true;
+    });
+  };
+  let grew = true;
+  while (grew) {
+    grew = false;
+    const known = new Set(chosen.keys());
+    chosen.forEach((slot) => {
+      slot.preds.flat().forEach((pred) => {
+        const parts = /^[A-Z]{2,4}$/.test(pred) ? [...pred] : [pred];
+        parts.forEach((name) => {
+          if (known.has(name)) return;
+          if (remember(name)) grew = true;
+        });
+      });
+    });
+  }
+  const jobs = [...chosen.values()].map((slot) => {
+    const nonEmpty = slot.preds.filter((list) => list.length);
+    const predKey =
+      nonEmpty.length && nonEmpty.length >= slot.preds.length - nonEmpty.length
+        ? modeValue(nonEmpty.map((list) => [...list].sort().join("+")))
+        : modeValue(slot.preds.map((list) => [...list].sort().join("+")));
+    return {
+      name: slot.name,
+      duration: modeValue(slot.durations),
+      preds: predKey ? String(predKey).split("+") : [],
+    };
+  });
+  jobs.sort((a, b) => a.name.localeCompare(b.name, "ko"));
+  return refineExamJobs(jobs);
+}
+
+function plainPath(solved) {
+  return criticalPathLabels(solved)
+    .split(" / ")
+    .map((path) =>
+      path
+        .split(" → ")
+        .filter((name) => name !== "Dummy")
+        .join(" → ")
+    )
+    .filter(Boolean)
+    .join(" / ");
+}
+
+function realRows(solved) {
+  return solved.rows.filter((row) => !row.dummy);
+}
+
+function rowDf(row) {
+  return row.tf - row.ff;
+}
+
+function rememberGantt(source, solved, title) {
+  ganttStore[source] = {
+    title,
+    project: solved.project,
+    path: plainPath(solved),
+    rows: realRows(solved).map((row) => ({
+      name: row.name,
+      duration: row.duration,
+      es: row.es,
+      ef: row.ef,
+      ls: row.ls,
+      lf: row.lf,
+      tf: row.tf,
+      ff: row.ff,
+      critical: row.tf === 0,
+    })),
+  };
+}
+
+function resultTabs(page, panel) {
+  const tableOn = panel !== "gantt";
+  return `<div class="view-tabs" role="tablist" aria-label="결과 보기">
+    <button type="button" class="btn ghost${tableOn ? " on" : ""}" data-result-view="table" data-result-page="${page}" aria-pressed="${tableOn}">표로 보기</button>
+    <button type="button" class="btn ghost${tableOn ? "" : " on"}" data-result-view="gantt" data-result-page="${page}" aria-pressed="${!tableOn}">간트차트로 보기</button>
+  </div>`;
+}
+
+function ganttChart(data) {
+  const project = Math.max(1, Number(data.project) || 0);
+  const dayW = project > 24 ? 22 : 28;
+  const trackW = Math.max(280, project * dayW);
+  const ticks = [];
+  const step = project <= 20 ? 1 : project <= 40 ? 2 : 5;
+  for (let day = 0; day <= project; day += step) ticks.push(day);
+  if (ticks[ticks.length - 1] !== project) ticks.push(project);
+  const rows = data.rows
+    .map((row) => {
+      const left = (row.es / project) * 100;
+      const width = (Math.max(0, row.duration) / project) * 100;
+      const floatLeft = (row.ef / project) * 100;
+      const floatWidth = (Math.max(0, row.tf) / project) * 100;
+      const crit = row.critical || row.tf === 0;
+      return `<div class="gantt-row${crit ? " is-crit" : ""}">
+        <div class="gantt-label"><b>${esc(row.name)}</b><small>${row.duration}일</small></div>
+        <div class="gantt-track" style="width:${trackW}px">
+          ${
+            floatWidth > 0
+              ? `<span class="gantt-float" style="left:${floatLeft}%;width:${floatWidth}%" title="총여유 TF ${row.tf}일"></span>`
+              : ""
+          }
+          <span class="gantt-bar${crit ? " is-crit" : ""}" style="left:${left}%;width:${Math.max(width, 1.2)}%" title="ES ${row.es}일, EF ${row.ef}일">${width >= 8 ? row.duration : ""}</span>
+        </div>
+        <div class="gantt-meta">ES ${row.es} · EF ${row.ef}${crit ? " · 주공정" : ` · TF ${row.tf}`}</div>
+      </div>`;
+    })
+    .join("");
+  const axis = ticks
+    .map((day) => `<span style="left:${(day / project) * 100}%">${day}</span>`)
+    .join("");
+  return `<div class="gantt">
+    <header class="gantt-spec">
+      <div>
+        <p class="gantt-spec-kicker">SPECIFICATION · 공사 개요</p>
+        <h2>${esc(data.title || "공정표")}</h2>
+      </div>
+      <dl>
+        <div><dt>공기</dt><dd>${project}일</dd></div>
+        <div><dt>주공정</dt><dd>${esc(data.path || "없음")}</dd></div>
+      </dl>
+    </header>
+    <p class="gantt-legend"><span class="gantt-swatch is-crit"></span> 주공정 <span class="gantt-swatch"></span> 다른 작업 <span class="gantt-swatch is-float"></span> 총여유 TF</p>
+    <div class="gantt-scroll">
+      <div class="gantt-sheet">
+        ${rows}
+        <div class="gantt-row gantt-scale">
+          <div></div>
+          <div class="gantt-axis" style="width:${trackW}px">${axis}</div>
+        </div>
+      </div>
+    </div>
+    <p class="caption">막대는 ES에서 EF까지입니다. 막대 뒤의 빗금은 총여유 TF이고, LF까지 늘릴 수 있는 날입니다. 기간이 0인 더미는 막대로 그리지 않습니다.</p>
+  </div>`;
+}
+
+function ganttPanel(host) {
+  const source = ganttUi.source === "draw" ? "draw" : "solve";
+  const data = ganttStore[source];
+  const empty =
+    source === "draw"
+      ? "공정표 그리기에서 순서 채점이 맞으면, 그 표의 ES와 EF로 막대를 그립니다."
+      : "사진 문제풀이에서 계산하기를 누르면, 그 표의 ES와 EF로 막대를 그립니다.";
+  const note =
+    host && source !== host
+      ? `<p class="caption">이 막대는 ${source === "draw" ? "공정표 그리기" : "사진 문제풀이"}에서 가져온 표입니다.</p>`
+      : "";
+  return `<div class="gantt-sources" role="group" aria-label="간트차트에 쓸 공정표">
+      <button type="button" class="btn ghost${source === "draw" ? " on" : ""}" data-gantt-source="draw" aria-pressed="${source === "draw"}">공정표 그리기</button>
+      <button type="button" class="btn ghost${source === "solve" ? " on" : ""}" data-gantt-source="solve" aria-pressed="${source === "solve"}">사진 문제풀이</button>
+    </div>
+    ${note}
+    ${data ? ganttChart(data) : `<p class="lead">${empty}</p>`}`;
+}
+
+function bindResultViews(repaint) {
+  document.querySelectorAll("[data-result-view]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const view = btn.getAttribute("data-result-view") === "gantt" ? "gantt" : "table";
+      const page = btn.getAttribute("data-result-page");
+      if (page === "draw") {
+        if (view === "gantt" && drawUi.panel !== "gantt") ganttUi.source = "draw";
+        drawUi.panel = view;
+      } else {
+        if (view === "gantt" && solveUi.panel !== "gantt") ganttUi.source = "solve";
+        solveUi.panel = view;
+      }
+      repaint();
+    });
+  });
+  document.querySelectorAll("[data-gantt-source]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      ganttUi.source = btn.getAttribute("data-gantt-source") === "draw" ? "draw" : "solve";
+      repaint();
+    });
+  });
+}
+
+function examTable(solved, mode) {
+  const rows = realRows(solved);
+  const headers = {
+    read: ["작업", "기간", "바로 앞"],
+    times: ["작업", "기간", "ES", "EF", "LS", "LF"],
+    tf: ["작업", "ES", "LS", "TF"],
+    ff: ["작업", "EF", "FF"],
+    df: ["작업", "TF", "FF", "DF"],
+    cp: ["작업", "기간", "TF", "FF", "DF", "CP"],
+  }[mode];
+  const cells = (row) => {
+    if (mode === "times") return [row.name, row.duration, row.es, row.ef, row.ls, row.lf];
+    if (mode === "tf") return [row.name, row.es, row.ls, row.tf];
+    if (mode === "ff") return [row.name, row.ef, row.ff];
+    if (mode === "df") return [row.name, row.tf, row.ff, rowDf(row)];
+    return [row.name, row.duration, row.tf, row.ff, rowDf(row), row.tf === 0 ? "CP" : ""];
+  };
+  return `<div class="table-wrap"><table class="cpm-table"><thead><tr>${headers
+    .map((header) => `<th>${header}</th>`)
+    .join("")}</tr></thead><tbody>${rows
+    .map((row) => `<tr class="${row.tf === 0 ? "is-crit" : ""}">${cells(row).map((cell) => `<td>${cell}</td>`).join("")}</tr>`)
+    .join("")}</tbody></table></div>`;
+}
+
+function solveSteps(built) {
+  const walk = buildWalkthrough({ activities: built.activities });
+  const solved = walk.solved;
+  const rows = realRows(solved);
+  const blank = { revealTE: [], revealTL: [], showCrit: false };
+  const open = { revealTE: [...solved.ids], revealTL: [...solved.ids], showCrit: false };
+  const calc = walk.steps.filter(
+    (step) => step.title.startsWith("전진") || step.title.startsWith("후진") || step.title === "프로젝트 공기"
+  );
+  const steps = [
+    {
+      title: "사진에서 읽은 작업",
+      html: `<p>확인한 작업 이름, 일수, 바로 앞 작업으로 공정표를 계산했습니다. 빈칸은 바로 앞 작업이 없는 것입니다.</p>
+        <div class="table-wrap"><table class="cpm-table"><thead><tr><th>작업</th><th>기간</th><th>바로 앞</th></tr></thead><tbody>${built.jobs
+          .map((job) => `<tr><td>${esc(job.name)}</td><td>${job.duration}</td><td>${job.preds.length ? esc(job.preds.join(", ")) : "없음"}</td></tr>`)
+          .join("")}</tbody></table></div>
+        <p>이어서 그린 공정표의 계산입니다. TF는 총여유, FF는 자유여유, DF는 간섭여유, CP는 주공정입니다.</p>
+        <p>주공정선 <strong>${esc(plainPath(solved))}</strong> · 공기 ${solved.project}일</p>
+        ${examTable(solved, "cp")}`,
+      revealTE: [...solved.ids],
+      revealTL: [...solved.ids],
+      showCrit: true,
+    },
+    {
+      title: "공정표를 그리는 이유",
+      html: `<p>화살표는 작업이고, 점선은 더미입니다. 더미의 기간은 0이고 순서만 나타냅니다. 한 결합점에 작업 화살이 두 개 이상 들어가면, 기간이 가장 긴 작업만 그 점으로 직접 가고 나머지는 점선 더미로 번호를 나눠 잇습니다. 시작과 끝이 같은 화살도 더미로 분리합니다.</p>
+        <ul>${built.notes.map((line) => `<li>${line}</li>`).join("")}</ul>`,
+      ...blank,
+    },
+    ...calc,
+    {
+      title: "작업의 네 시각",
+      html: `<p>ES는 출발 결합점의 TE, EF는 ES에 기간을 더한 날입니다. LF는 도착 결합점의 TL, LS는 LF에서 기간을 뺀 날입니다.</p>
+        ${examTable(solved, "times")}
+        <ul>${rows
+          .map((row) => `<li>${row.name}: ES ${row.es}, EF ${row.es}+${row.duration}=${row.ef}, LF ${row.lf}, LS ${row.lf}−${row.duration}=${row.ls}</li>`)
+          .join("")}</ul>`,
+      ...open,
+    },
+    {
+      title: "총여유 TF",
+      html: `<p>TF는 총여유입니다. LS에서 ES를 뺀 날수이고, 이 작업만 늦춰도 전체 공기가 그대로인 날입니다. 0이면 하루도 밀 수 없습니다.</p>
+        ${examTable(solved, "tf")}
+        <ul>${rows.map((row) => `<li>${row.name}: LS ${row.ls} − ES ${row.es} = <strong>TF ${row.tf}</strong></li>`).join("")}</ul>`,
+      ...open,
+    },
+    {
+      title: "자유여유 FF",
+      html: `<p>FF는 자유여유입니다. 도착 결합점의 빠른 시각에서 이 작업의 EF를 뺀 날수입니다. 바로 다음 작업의 빠른 시작을 밀지 않고 늦출 수 있는 날입니다.</p>
+        ${examTable(solved, "ff")}
+        <ul>${rows
+          .map((row) => `<li>${row.name}: TE(${row.to}) ${solved.TE[row.to]} − EF ${row.ef} = <strong>FF ${row.ff}</strong></li>`)
+          .join("")}</ul>`,
+      ...open,
+    },
+    {
+      title: "간섭여유 DF",
+      html: `<p>DF는 간섭여유입니다. 총여유 TF에서 자유여유 FF를 뺀 날수입니다. 이 날만큼 늦추면 내 여유뿐 아니라 뒤 작업의 여유도 함께 줄어듭니다.</p>
+        ${examTable(solved, "df")}
+        <ul>${rows.map((row) => `<li>${row.name}: TF ${row.tf} − FF ${row.ff} = <strong>DF ${rowDf(row)}</strong></li>`).join("")}</ul>`,
+      ...open,
+    },
+    {
+      title: "주공정 CP",
+      html: `<p>CP는 주공정입니다. TF가 0인 작업만 해당하고, 그 작업을 하루 늦추면 전체 공기도 하루 늘어납니다.</p>
+        <p>주공정선 <strong>${esc(plainPath(solved))}</strong> · 공기 ${solved.project}일</p>
+        ${examTable(solved, "cp")}
+        <p>왼쪽 사진의 작업 목록과 이 표의 CP 칸을 나란히 확인해 보세요. 적갈색 화살표가 주공정입니다.</p>`,
+      revealTE: [...solved.ids],
+      revealTL: [...solved.ids],
+      showCrit: true,
+    },
+  ];
+  return { solved, steps };
+}
+
+function solveUpload() {
+  return `
+    <div class="kicker">기출 해설</div>
+    <h1>문제 사진으로 풀기</h1>
+    <p class="lead">작업 이름, 기간, 바로 앞 작업이 적힌 기출 사진을 올리면 읽은 값을 표로 먼저 보여 줍니다. 사진과 다르면 칸을 고친 뒤 계산하기를 누르세요.</p>
+    <div class="solve-layout">
+      <aside class="solve-photo">
+        ${solveUi.imageUrl ? `<img src="${solveUi.imageUrl}" alt="올린 문제 사진">` : `<p>아직 사진이 없습니다.</p>`}
+        <p><input id="solve-file" type="file" accept="image/*" aria-label="문제 사진" ${solveUi.status ? "disabled" : ""}></p>
+      </aside>
+      <div>
+        ${solveUi.status ? `<p class="solve-status" id="solve-status" role="status">${esc(solveUi.status)}</p>` : `<p class="lead">글자가 또렷한 표 사진을 올리면 읽은 값을 먼저 확인합니다.</p>`}
+        ${solveUi.error ? `<p class="solve-error" role="alert">${esc(solveUi.error)}</p>` : ""}
+      </div>
+    </div>
+  `;
+}
+
+function blankDraftRow() {
+  return { name: "", duration: "", preds: "" };
+}
+
+function draftFromJobs(jobs) {
+  return (jobs || []).map((job) => ({
+    name: job.name || "",
+    duration: job.duration == null || job.duration === "" ? "" : String(job.duration),
+    preds: (job.preds || []).join(", "),
+  }));
+}
+
+function collectDraft() {
+  const table = document.getElementById("solve-draft");
+  if (!table) return (solveUi.draft || []).map((row) => ({ ...row }));
+  return [...table.querySelectorAll("tbody tr")].map((tr) => ({
+    name: tr.querySelector("[data-draft=name]").value,
+    duration: tr.querySelector("[data-draft=duration]").value,
+    preds: tr.querySelector("[data-draft=preds]").value,
+  }));
+}
+
+function tidyDraftName(text) {
+  const name = String(text || "").trim();
+  if (/^[A-Za-z]$/.test(name)) return name.toUpperCase();
+  return name;
+}
+
+function parsePredField(text) {
+  const raw = String(text || "").trim();
+  if (!raw || emptyPred(raw)) return [];
+  return [
+    ...new Set(
+      raw
+        .split(/[,，、·∙•/+]+|\s+/)
+        .map(tidyDraftName)
+        .filter((name) => name && !emptyPred(name))
+    ),
+  ];
+}
+
+function jobsFromDraft(rows) {
+  return rows
+    .map((row) => {
+      const name = tidyDraftName(row.name);
+      const durationText = String(row.duration || "").replace(/\s/g, "");
+      const predText = String(row.preds || "").trim();
+      if (!name && !durationText && !predText) return null;
+      const duration = examDuration(durationText);
+      return {
+        name,
+        duration: duration == null ? Number.NaN : duration,
+        preds: parsePredField(predText),
+      };
+    })
+    .filter(Boolean);
+}
+
+function solveDraft() {
+  const rows = solveUi.draft && solveUi.draft.length ? solveUi.draft : [blankDraftRow(), blankDraftRow(), blankDraftRow(), blankDraftRow()];
+  return `
+    <div class="kicker">기출 해설</div>
+    <h1>읽은 작업을 확인</h1>
+    <p class="lead">사진에서 읽은 작업명, 작업일수, 선행작업을 표에 올려 두었습니다. 사진과 다르면 칸을 고치고, 빠진 줄은 추가한 뒤 계산하기를 누르세요. 바로 앞 작업이 없으면 그 칸은 비워 둡니다.</p>
+    <div class="solve-layout">
+      <aside class="solve-photo">
+        ${solveUi.imageUrl ? `<img src="${solveUi.imageUrl}" alt="올린 문제 사진">` : `<p>아직 사진이 없습니다.</p>`}
+        <p><input id="solve-file" type="file" accept="image/*" aria-label="문제 사진"></p>
+      </aside>
+      <div>
+        ${solveUi.draftError ? `<p class="solve-error" role="alert">${esc(solveUi.draftError)}</p>` : ""}
+        <div class="table-wrap">
+          <table class="cpm-table solve-table" id="solve-draft">
+            <thead><tr><th>작업명</th><th>작업일수</th><th>선행작업</th><th></th></tr></thead>
+            <tbody>
+              ${rows
+                .map(
+                  (row) => `<tr>
+                    <td><input data-draft="name" aria-label="작업명" value="${esc(row.name)}"></td>
+                    <td><input data-draft="duration" inputmode="numeric" aria-label="작업일수" value="${esc(row.duration)}"></td>
+                    <td><input data-draft="preds" aria-label="선행작업" value="${esc(row.preds)}" placeholder="없으면 비움"></td>
+                    <td><button type="button" class="btn ghost" data-draft-remove>삭제</button></td>
+                  </tr>`
+                )
+                .join("")}
+            </tbody>
+          </table>
+        </div>
+        <p style="display:flex;gap:10px;flex-wrap:wrap">
+          <button type="button" class="btn ghost" id="solve-add-row">줄 추가</button>
+          <button type="button" class="btn" id="solve-calc">계산하기</button>
+          <button type="button" class="btn ghost" id="solve-back">다른 사진</button>
+        </p>
+      </div>
+    </div>
+  `;
+}
+
+function solveLesson() {
+  const { solved, steps } = solveSteps(solveUi.built);
+  const last = steps.length - 1;
+  solveUi.step = Math.max(0, Math.min(last, solveUi.step));
+  const s = steps[solveUi.step];
+  const pct = Math.round(((solveUi.step + 1) / steps.length) * 100);
+  return `
+    <div id="solve-lesson">
+      <div class="kicker">기출 해설 · ${solveUi.step + 1} / ${steps.length}</div>
+      <h1>${s.title}</h1>
+      <div class="progress"><span style="width:${pct}%"></span></div>
+      <div class="solve-layout">
+        <aside class="solve-photo">
+          <img src="${solveUi.imageUrl}" alt="올린 문제 사진">
+          <p>해설하는 동안 사진을 옆에 둡니다.</p>
+        </aside>
+        <div>
+          <div class="net-panel">${cpmSvg(solved, solveUi.panel === "gantt" ? { revealTE: [...solved.ids], revealTL: [...solved.ids], showCrit: true, caption: "" } : s)}</div>
+          ${resultTabs("solve", solveUi.panel)}
+          ${solveUi.panel === "gantt" ? ganttPanel("solve") : `<div class="walk-card">${s.html}</div>`}
+          <p style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px">
+            <button type="button" class="btn ghost" id="solve-prev">이전</button>
+            <button type="button" class="btn" id="solve-next">${solveUi.step === last ? "해설 끝" : "다음 설명"}</button>
+            <button type="button" class="btn ghost" id="solve-edit">표 고치기</button>
+            <button type="button" class="btn ghost" id="solve-back">다른 사진</button>
+          </p>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function solveView() {
+  if (solveUi.built) return solveLesson();
+  if (solveUi.draft) return solveDraft();
+  return solveUpload();
+}
+
+function paintSolve() {
+  if (location.hash !== "#/solve") return;
+  app.innerHTML = solveView();
+  navActive();
+  bindSolve();
+}
+
+function setSolveStatus(text) {
+  solveUi.status = text;
+  const status = document.getElementById("solve-status");
+  if (status) status.textContent = text;
+}
+
+async function loadTesseract() {
+  if (window.Tesseract) return window.Tesseract;
+  await new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";
+    script.onload = resolve;
+    script.onerror = () => reject(new Error("글자를 읽는 도구를 불러오지 못했습니다. 인터넷 연결을 확인한 뒤 사진을 다시 올려 주세요."));
+    document.head.appendChild(script);
+  });
+  if (!window.Tesseract) throw new Error("글자를 읽는 도구를 시작하지 못했습니다.");
+  return window.Tesseract;
+}
+
+function loadSolveImage(url) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("사진을 열지 못했습니다."));
+    image.src = url;
+  });
+}
+
+function cropExamImage(image) {
+  const canvas = document.createElement("canvas");
+  canvas.width = image.width;
+  canvas.height = image.height;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(image, 0, 0);
+  const { width, height } = canvas;
+  const pixels = ctx.getImageData(0, 0, width, height).data;
+  const rowInk = new Float64Array(height);
+  const colInk = new Float64Array(width);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const index = (y * width + x) * 4;
+      const gray = pixels[index] * 0.299 + pixels[index + 1] * 0.587 + pixels[index + 2] * 0.114;
+      if (gray < 185) {
+        rowInk[y] += 1;
+        colInk[x] += 1;
+      }
+    }
+  }
+  const rowCut = Math.max(2, width * 0.008);
+  const colCut = Math.max(2, height * 0.008);
+  let top = 0;
+  let bottom = height - 1;
+  let left = 0;
+  let right = width - 1;
+  while (top < bottom && rowInk[top] < rowCut) top += 1;
+  while (bottom > top && rowInk[bottom] < rowCut) bottom -= 1;
+  while (left < right && colInk[left] < colCut) left += 1;
+  while (right > left && colInk[right] < colCut) right -= 1;
+  const pad = 12;
+  top = Math.max(0, top - pad);
+  left = Math.max(0, left - pad);
+  bottom = Math.min(height - 1, bottom + pad);
+  right = Math.min(width - 1, right + pad);
+  const cropW = Math.max(1, right - left + 1);
+  const cropH = Math.max(1, bottom - top + 1);
+  if (cropW > width * 0.98 && cropH > height * 0.98) return image;
+  const cropped = document.createElement("canvas");
+  cropped.width = cropW;
+  cropped.height = cropH;
+  cropped.getContext("2d").drawImage(canvas, left, top, cropW, cropH, 0, 0, cropW, cropH);
+  return cropped;
+}
+
+function sharpenExam(source) {
+  const { gray, width, height } = source;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  const pixels = ctx.createImageData(width, height);
+  const at = (x, y) => gray[Math.max(0, Math.min(height - 1, y)) * width + Math.max(0, Math.min(width - 1, x))];
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const blur = (at(x - 1, y) + at(x + 1, y) + at(x, y - 1) + at(x, y + 1) + at(x, y)) / 5;
+      const value = Math.max(0, Math.min(255, at(x, y) + (at(x, y) - blur) * 0.9));
+      const index = (y * width + x) * 4;
+      pixels.data[index] = value;
+      pixels.data[index + 1] = value;
+      pixels.data[index + 2] = value;
+      pixels.data[index + 3] = 255;
+    }
+  }
+  ctx.putImageData(pixels, 0, 0);
+  return canvas;
+}
+
+function scaledExamGray(image) {
+  const longest = Math.max(image.width, image.height);
+  const scale = longest < 2200 ? Math.min(3, 2200 / longest) : Math.min(1, 2800 / longest);
+  const width = Math.max(1, Math.round(image.width * scale));
+  const height = Math.max(1, Math.round(image.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, width, height);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(image, 0, 0, width, height);
+  const pixels = ctx.getImageData(0, 0, width, height);
+  const data = pixels.data;
+  const gray = new Uint8ClampedArray(width * height);
+  for (let pixel = 0, index = 0; pixel < gray.length; pixel += 1, index += 4) {
+    gray[pixel] = data[index] * 0.299 + data[index + 1] * 0.587 + data[index + 2] * 0.114;
+  }
+  const sample = [];
+  for (let pixel = 0; pixel < gray.length; pixel += 17) sample.push(gray[pixel]);
+  sample.sort((a, b) => a - b);
+  const low = sample[Math.floor(sample.length * 0.02)] || 0;
+  const high = sample[Math.floor(sample.length * 0.98)] || 255;
+  const span = Math.max(1, high - low);
+  for (let pixel = 0, index = 0; pixel < gray.length; pixel += 1, index += 4) {
+    const value = Math.max(0, Math.min(255, ((gray[pixel] - low) / span) * 255));
+    gray[pixel] = value;
+    data[index] = value;
+    data[index + 1] = value;
+    data[index + 2] = value;
+  }
+  ctx.putImageData(pixels, 0, 0);
+  return { canvas, gray, width, height };
+}
+
+function adaptiveExamCanvas(source) {
+  const { gray, width, height } = source;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  const pixels = ctx.createImageData(width, height);
+  const radius = Math.max(12, Math.round(Math.min(width, height) / 45));
+  const stride = width + 1;
+  const integral = new Float64Array(stride * (height + 1));
+  for (let y = 0; y < height; y += 1) {
+    let row = 0;
+    for (let x = 0; x < width; x += 1) {
+      row += gray[y * width + x];
+      integral[(y + 1) * stride + (x + 1)] = integral[y * stride + (x + 1)] + row;
+    }
+  }
+  const rect = (x0, y0, x1, y1) =>
+    integral[y1 * stride + x1] - integral[y0 * stride + x1] - integral[y1 * stride + x0] + integral[y0 * stride + x0];
+  for (let y = 0; y < height; y += 1) {
+    const y0 = Math.max(0, y - radius);
+    const y1 = Math.min(height, y + radius + 1);
+    for (let x = 0; x < width; x += 1) {
+      const x0 = Math.max(0, x - radius);
+      const x1 = Math.min(width, x + radius + 1);
+      const mean = rect(x0, y0, x1, y1) / ((x1 - x0) * (y1 - y0));
+      const value = gray[y * width + x] < mean - 8 ? 0 : 255;
+      const index = (y * width + x) * 4;
+      pixels.data[index] = value;
+      pixels.data[index + 1] = value;
+      pixels.data[index + 2] = value;
+      pixels.data[index + 3] = 255;
+    }
+  }
+  ctx.putImageData(pixels, 0, 0);
+  return canvas;
+}
+
+function examScore(jobs) {
+  if (!jobs || jobs.length < 2) return 0;
+  const links = jobs.reduce((sum, job) => sum + job.preds.length, 0);
+  const penalty = (jobs.dropped || 0) * 30;
+  try {
+    jobsToNetwork(jobs);
+  } catch (e) {
+    return Math.max(0, jobs.length - penalty);
+  }
+  return jobs.length * 10 + links - penalty;
+}
+
+function projectionBands(ink, length, cutoff, minThick, minGap) {
+  const bands = [];
+  let start = -1;
+  for (let index = 0; index <= length; index += 1) {
+    const on = index < length && ink[index] >= cutoff;
+    if (on && start < 0) start = index;
+    if (!on && start >= 0) {
+      if (index - start >= minThick) bands.push({ a: start, b: index });
+      start = -1;
+    }
+  }
+  const merged = [];
+  bands.forEach((band) => {
+    const prev = merged[merged.length - 1];
+    if (prev && band.a - prev.b <= minGap) prev.b = band.b;
+    else merged.push({ a: band.a, b: band.b });
+  });
+  return merged;
+}
+
+function withoutExamRules(canvas) {
+  const copy = document.createElement("canvas");
+  copy.width = canvas.width;
+  copy.height = canvas.height;
+  const ctx = copy.getContext("2d");
+  ctx.drawImage(canvas, 0, 0);
+  const { width, height } = copy;
+  const image = ctx.getImageData(0, 0, width, height);
+  const data = image.data;
+  const rowInk = new Float64Array(height);
+  const colInk = new Float64Array(width);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (data[(y * width + x) * 4] < 150) {
+        rowInk[y] += 1;
+        colInk[x] += 1;
+      }
+    }
+  }
+  const thin = Math.max(10, Math.round(Math.min(width, height) * 0.012));
+  const bands = (ink, length, cutoff) => {
+    const found = [];
+    let start = -1;
+    for (let index = 0; index <= length; index += 1) {
+      const on = index < length && ink[index] >= cutoff;
+      if (on && start < 0) start = index;
+      if (!on && start >= 0) {
+        if (index - start <= thin) found.push([start, index]);
+        start = -1;
+      }
+    }
+    return found;
+  };
+  const rows = bands(rowInk, height, Math.max(12, width * 0.28));
+  const cols = bands(colInk, width, Math.max(12, height * 0.28));
+  const wipe = (x, y) => {
+    if (x < 0 || y < 0 || x >= width || y >= height) return;
+    const index = (y * width + x) * 4;
+    data[index] = 255;
+    data[index + 1] = 255;
+    data[index + 2] = 255;
+  };
+  rows.forEach(([a, b]) => {
+    for (let y = a - 2; y < b + 2; y += 1) {
+      for (let x = 0; x < width; x += 1) wipe(x, y);
+    }
+  });
+  cols.forEach(([a, b]) => {
+    for (let x = a - 2; x < b + 2; x += 1) {
+      for (let y = 0; y < height; y += 1) wipe(x, y);
+    }
+  });
+  ctx.putImageData(image, 0, 0);
+  return copy;
+}
+
+function examTableGrid(canvas) {
+  const { width, height } = canvas;
+  const data = canvas.getContext("2d").getImageData(0, 0, width, height).data;
+  const rowInk = new Float64Array(height);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (data[(y * width + x) * 4] < 150) rowInk[y] += 1;
+    }
+  }
+  const rows = projectionBands(rowInk, height, Math.max(4, width * 0.004), 10, 8).map((band) => ({
+    y0: band.a,
+    y1: band.b,
+  }));
+  if (rows.length < 3) return null;
+  const colHits = new Float64Array(width);
+  rows.forEach((row) => {
+    const seen = new Uint8Array(width);
+    for (let y = row.y0; y < row.y1; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        if (data[(y * width + x) * 4] < 150) seen[x] = 1;
+      }
+    }
+    for (let x = 0; x < width; x += 1) colHits[x] += seen[x];
+  });
+  const cores = projectionBands(colHits, width, Math.max(2, Math.ceil(rows.length * 0.34)), 8, 12)
+    .filter((band) => band.b - band.a > Math.max(12, width * 0.015))
+    .map((band) => ({ x0: band.a, x1: band.b }));
+  const cols = [];
+  cores.forEach((core) => {
+    const prev = cols[cols.length - 1];
+    const gap = prev ? core.x0 - prev.x1 : Infinity;
+    const close = gap <= Math.max(40, width * 0.04);
+    if (prev && close) prev.x1 = core.x1;
+    else cols.push({ ...core });
+  });
+  if (cols.length < 2) return null;
+  return { rows, cols };
+}
+
+function columnBounds(cols, index, width) {
+  const left = index <= 0 ? 0 : Math.floor((cols[index - 1].x1 + cols[index].x0) / 2);
+  const right = index >= cols.length - 1 ? width : Math.ceil((cols[index].x1 + cols[index + 1].x0) / 2);
+  return { left, right };
+}
+
+function expandRowSpan(canvas, row, x0, x1, leftLimit, rightLimit) {
+  const y0 = Math.max(0, row.y0);
+  const y1 = Math.min(canvas.height, row.y1);
+  const stripH = Math.max(1, y1 - y0);
+  const data = canvas.getContext("2d").getImageData(0, y0, canvas.width, stripH).data;
+  const dark = (x) => {
+    if (x < 0 || x >= canvas.width) return false;
+    for (let y = 0; y < stripH; y += 1) {
+      if (data[(y * canvas.width + x) * 4] < 160) return true;
+    }
+    return false;
+  };
+  const gap = 18;
+  let left = x0;
+  let blank = 0;
+  for (let x = x0 - 1; x >= leftLimit; x -= 1) {
+    if (dark(x)) {
+      left = x;
+      blank = 0;
+    } else {
+      blank += 1;
+      if (blank >= gap) break;
+    }
+  }
+  let right = x1;
+  blank = 0;
+  for (let x = x1; x < rightLimit; x += 1) {
+    if (dark(x)) {
+      right = x + 1;
+      blank = 0;
+    } else {
+      blank += 1;
+      if (blank >= gap) break;
+    }
+  }
+  return {
+    x0: Math.max(leftLimit, left - 8),
+    x1: Math.min(rightLimit, right + 8),
+  };
+}
+
+function sliceExamCell(canvas, row, col, bounds) {
+  const limit = bounds || { left: 0, right: canvas.width };
+  const span = expandRowSpan(canvas, row, col.x0, col.x1, limit.left, limit.right);
+  const x0 = Math.max(0, span.x0);
+  const y0 = Math.max(0, row.y0);
+  const x1 = Math.min(canvas.width, span.x1);
+  const y1 = Math.min(canvas.height, row.y1);
+  const sw = Math.max(1, x1 - x0);
+  const sh = Math.max(1, y1 - y0);
+  const sample = canvas.getContext("2d").getImageData(x0, y0, sw, sh).data;
+  let ink = 0;
+  for (let index = 0; index < sample.length; index += 4) {
+    if (sample[index] < 160) ink += 1;
+  }
+  const scale = Math.min(8, Math.max(3, 180 / sh));
+  const out = document.createElement("canvas");
+  const dw = Math.round(sw * scale);
+  const dh = Math.round(sh * scale);
+  out.width = dw + 36;
+  out.height = dh + 36;
+  const ctx = out.getContext("2d");
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, out.width, out.height);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(canvas, x0, y0, sw, sh, 18, 18, dw, dh);
+  const drawn = ctx.getImageData(0, 0, out.width, out.height);
+  const pixels = drawn.data;
+  for (let index = 0; index < pixels.length; index += 4) {
+    const value = pixels[index] < 176 ? 0 : 255;
+    pixels[index] = value;
+    pixels[index + 1] = value;
+    pixels[index + 2] = value;
+  }
+  ctx.putImageData(drawn, 0, 0);
+  return { canvas: out, ink };
+}
+
+async function ocrExamCell(worker, slice, whitelist, mode) {
+  if (!slice || slice.ink < 20) return { text: "", confidence: 0 };
+  try {
+    await worker.setParameters({
+      tessedit_pageseg_mode: mode,
+      tessedit_char_whitelist: whitelist,
+      user_defined_dpi: "300",
+      preserve_interword_spaces: "1",
+    });
+  } catch (e) {
+    /* keep the current parameters */
+  }
+  const result = await worker.recognize(slice.canvas);
+  return {
+    text: String(result.data.text || "").replace(/\s+/g, " ").trim(),
+    confidence: Number(result.data.confidence) || 0,
+  };
+}
+
+function cleanCellName(text) {
+  const token = String(text || "")
+    .replace(/([A-Za-z])\1+/gi, "$1")
+    .replace(/[^A-Za-z가-힣]/g, "");
+  return examName(token);
+}
+
+function cleanCellDuration(text) {
+  const digits = String(text || "").replace(/[^\d]/g, "");
+  return examDuration(digits);
+}
+
+function cleanCellPreds(text, name) {
+  const preds = [];
+  String(text || "")
+    .toUpperCase()
+    .replace(/([A-Z])\1+/g, "$1")
+    .split(/[^A-Z가-힣]+/)
+    .filter(Boolean)
+    .forEach((part) => {
+      if (/^[A-Z]{2,4}$/.test(part)) preds.push(...part.split(""));
+      else {
+        const pred = examName(part);
+        if (pred) preds.push(pred);
+      }
+    });
+  return [...new Set(preds.filter((pred) => pred !== name))];
+}
+
+async function readExamTable(worker, latin, canvas, readId) {
+  const sheet = withoutExamRules(canvas);
+  const grid = examTableGrid(sheet);
+  if (!grid) return [];
+  const letters = latin || worker;
+  const boundsOf = (index) => columnBounds(grid.cols, index, sheet.width);
+  let headerAt = -1;
+  const headerLimit = Math.min(grid.rows.length, 4);
+  for (let row = 0; row < headerLimit && headerAt < 0; row += 1) {
+    if (readId !== solveUi.readId) return [];
+    const line = await ocrExamCell(
+      worker,
+      sliceExamCell(sheet, grid.rows[row], { x0: 0, x1: sheet.width }, { left: 0, right: sheet.width }),
+      "",
+      "7"
+    );
+    if (/작업|activity/i.test(line.text) && /선행|기간|일수|시간/i.test(line.text)) headerAt = row;
+  }
+  const sample = grid.rows.slice(headerAt >= 0 ? headerAt + 1 : 1);
+  const scores = grid.cols.map(() => ({ digit: 0, single: 0, multi: 0 }));
+  for (let row = 0; row < sample.length; row += 1) {
+    for (let col = 0; col < grid.cols.length; col += 1) {
+      if (readId !== solveUi.readId) return [];
+      const read = await ocrExamCell(letters, sliceExamCell(sheet, sample[row], grid.cols[col], boundsOf(col)), "", "7");
+      const text = read.text.replace(/\s/g, "");
+      const letterCount = (text.match(/[A-Za-z]/g) || []).length;
+      if (/^\d{1,3}$/.test(text)) scores[col].digit += 1;
+      else if (letterCount >= 2 || /[,.]/.test(text)) scores[col].multi += 1;
+      else if (letterCount === 1) scores[col].single += 1;
+    }
+  }
+  const bestCol = (pick) => {
+    let index = -1;
+    let best = 0;
+    scores.forEach((score, col) => {
+      const value = pick(score);
+      if (value > best) {
+        best = value;
+        index = col;
+      }
+    });
+    return index;
+  };
+  let durCol = bestCol((score) => score.digit);
+  if (durCol < 0) durCol = grid.cols.length - 1;
+  let predCol = bestCol((score) => (score === scores[durCol] ? 0 : score.multi));
+  let nameCol = -1;
+  let nameBest = -1;
+  scores.forEach((score, col) => {
+    if (col === durCol || col === predCol) return;
+    if (score.single >= nameBest) {
+      nameBest = score.single;
+      nameCol = col;
+    }
+  });
+  if (nameCol < 0) nameCol = scores.findIndex((_, col) => col !== durCol && col !== predCol);
+  if (predCol < 0) predCol = scores.findIndex((_, col) => col !== durCol && col !== nameCol);
+  const jobs = [];
+  const seen = new Set();
+  for (let row = headerAt >= 0 ? headerAt + 1 : 0; row < grid.rows.length; row += 1) {
+    if (readId !== solveUi.readId || location.hash !== "#/solve") return [];
+    setSolveStatus(`표의 ${row}번째 줄을 읽고 있습니다.`);
+    const nameSlice = sliceExamCell(sheet, grid.rows[row], grid.cols[nameCol], boundsOf(nameCol));
+    const durSlice = sliceExamCell(sheet, grid.rows[row], grid.cols[durCol], boundsOf(durCol));
+    if (nameSlice.ink < 20 || durSlice.ink < 20) continue;
+    const nameLoose = await ocrExamCell(letters, nameSlice, "", "13");
+    const looseCompact = nameLoose.text.replace(/\s/g, "");
+    const looseName = cleanCellName(nameLoose.text);
+    let name = "";
+    if (/^[A-Za-z]$/.test(looseCompact) && nameLoose.confidence >= 50) name = looseCompact.toUpperCase();
+    if (!name) {
+      const nameStrict = await ocrExamCell(letters, nameSlice, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "13");
+      const strictLetter = String(nameStrict.text || "").replace(/[^A-Za-z]/g, "");
+      if (/^[A-Za-z]$/.test(strictLetter) && nameStrict.confidence >= 50) name = strictLetter.toUpperCase();
+    }
+    if (!name) {
+      const hangul = await ocrExamCell(worker, nameSlice, "", "7");
+      const hangulName = cleanCellName(hangul.text);
+      if (hangulName && /^[가-힣]{1,4}$/.test(hangulName) && hangul.text.replace(/\s/g, "").length <= 4) name = hangulName;
+    }
+    if (!name && looseName && /^[가-힣]{1,4}$/.test(looseName) && nameLoose.text.replace(/\s/g, "").length <= 4) name = looseName;
+    const durLoose = await ocrExamCell(letters, durSlice, "", "7");
+    const shown = (durLoose.text.match(/\d{1,3}/) || [""])[0];
+    const duration = examDuration(shown);
+    if (!name || duration == null || seen.has(name)) continue;
+    let preds = [];
+    if (predCol >= 0) {
+      const predSlice = sliceExamCell(sheet, grid.rows[row], grid.cols[predCol], boundsOf(predCol));
+      if (predSlice.ink >= 20) {
+        const predLoose = await ocrExamCell(letters, predSlice, "", "7");
+        const predText = predLoose.text.trim();
+        if (!emptyPred(predText) && /[A-Za-z가-힣]/.test(predText)) {
+          const predStrict = await ocrExamCell(letters, predSlice, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz,-.", "7");
+          const loosePreds = predLoose.confidence >= 70 ? cleanCellPreds(predLoose.text, name) : [];
+          const strictPreds = predStrict.confidence >= 70 ? cleanCellPreds(predStrict.text, name) : [];
+          preds = strictPreds.length >= loosePreds.length ? strictPreds : loosePreds;
+        } else if (!emptyPred(predText) && !/[A-Za-z]/.test(predText)) {
+          const predHangul = await ocrExamCell(worker, predSlice, "", "7");
+          if (/[가-힣]/.test(predHangul.text) && !emptyPred(predHangul.text.trim())) {
+            preds = cleanCellPreds(predHangul.text, name);
+          }
+        }
+      }
+    }
+    seen.add(name);
+    jobs.push({ name, duration, preds });
+  }
+  return refineExamJobs(jobs);
+}
+
+async function recognizeExam(worker, canvas, mode, whitelist) {
+  try {
+    await worker.setParameters({
+      tessedit_pageseg_mode: mode,
+      user_defined_dpi: "300",
+      preserve_interword_spaces: "1",
+      tessedit_char_whitelist: whitelist || "",
+    });
+  } catch (e) {
+    /* keep the worker defaults */
+  }
+  const result = await worker.recognize(canvas);
+  return jobsFromOcr(result.data);
+}
+
+async function readExamPhoto(url, readId) {
+  solveUi.status = "사진에서 글자를 읽고 있습니다.";
+  solveUi.error = "";
+  solveUi.built = null;
+  solveUi.draft = null;
+  solveUi.draftError = "";
+  solveUi.panel = "table";
+  ganttStore.solve = null;
+  paintSolve();
+  let worker = null;
+  try {
+    const Tesseract = await loadTesseract();
+    if (readId !== solveUi.readId) return;
+    const image = cropExamImage(await loadSolveImage(url));
+    const gray = scaledExamGray(image);
+    const latin = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789,-.+ ";
+    const passes = [
+      [gray.canvas, "6", ""],
+      [gray.canvas, "6", latin],
+      [sharpenExam(gray), "6", latin],
+      [adaptiveExamCanvas(gray), "6", ""],
+      [gray.canvas, "4", ""],
+    ];
+    const logger = (message) => {
+      if (readId !== solveUi.readId) return;
+      const label = {
+        "loading tesseract core": "읽는 도구를 준비하고 있습니다.",
+        "initializing tesseract": "읽는 도구를 준비하고 있습니다.",
+        "loading language traineddata": "한글과 숫자를 준비하고 있습니다.",
+        "initializing api": "사진을 열 준비를 하고 있습니다.",
+        "recognizing text": `사진에서 글자를 읽고 있습니다. ${Math.round((message.progress || 0) * 100)}%`,
+      }[message.status];
+      if (label) setSolveStatus(label);
+    };
+    try {
+      worker = await Tesseract.createWorker("kor+eng", 1, { logger });
+    } catch (e) {
+      worker = await Tesseract.createWorker("eng", 1, { logger });
+    }
+    solveUi.worker = worker;
+    if (readId !== solveUi.readId) return;
+    let latinWorker = worker;
+    try {
+      latinWorker = await Tesseract.createWorker("eng");
+    } catch (e) {
+      latinWorker = worker;
+    }
+    solveUi.latin = latinWorker;
+    if (readId !== solveUi.readId) return;
+    setSolveStatus("표의 칸을 하나씩 읽고 있습니다.");
+    const fromCells = await readExamTable(worker, latinWorker, gray.canvas, readId);
+    if (readId !== solveUi.readId || location.hash !== "#/solve") return;
+    let chosen = fromCells;
+    if (chosen.length < 2) {
+      const founds = [];
+      for (let pass = 0; pass < passes.length; pass += 1) {
+        if (readId !== solveUi.readId || location.hash !== "#/solve") return;
+        setSolveStatus(`사진의 글자를 읽고 있습니다. ${pass + 1}/${passes.length}`);
+        founds.push(await recognizeExam(worker, passes[pass][0], passes[pass][1], passes[pass][2]));
+        if (founds.length >= 3) {
+          const prev = refineExamJobs(founds[founds.length - 2].map((job) => ({ ...job, preds: [...(job.preds || [])] })));
+          const curr = refineExamJobs(founds[founds.length - 1].map((job) => ({ ...job, preds: [...(job.preds || [])] })));
+          const keyOf = (jobs) =>
+            jobs
+              .map((job) => `${job.name}:${job.duration}:${[...job.preds].sort().join("+")}`)
+              .sort()
+              .join("|");
+          if (prev.length >= 3 && !prev.dropped && !curr.dropped && keyOf(prev) === keyOf(curr)) break;
+        }
+      }
+      chosen = assembleExamJobs(founds);
+    }
+    if (readId !== solveUi.readId || location.hash !== "#/solve") return;
+    const rows = chosen.length ? draftFromJobs(chosen) : [blankDraftRow(), blankDraftRow(), blankDraftRow(), blankDraftRow()];
+    solveUi.draft = rows;
+    solveUi.draftError =
+      chosen.length < 2
+        ? "사진에서 작업 표를 충분히 읽지 못했습니다. 아래 칸을 사진과 같게 고친 뒤 계산하기를 누르세요."
+        : "";
+    solveUi.built = null;
+    solveUi.step = 0;
+    solveUi.panel = "table";
+    solveUi.status = "";
+    solveUi.error = "";
+  } catch (err) {
+    if (readId !== solveUi.readId) return;
+    solveUi.built = null;
+    solveUi.status = "";
+    solveUi.error = "";
+    solveUi.draft = solveUi.draft && solveUi.draft.length ? solveUi.draft : [blankDraftRow(), blankDraftRow(), blankDraftRow(), blankDraftRow()];
+    solveUi.draftError = `${err.message || "사진을 읽지 못했습니다."} 아래 칸에 사진의 작업을 적고 계산하기를 누르세요.`;
+  } finally {
+    if (solveUi.latin && solveUi.latin !== worker) {
+      solveUi.latin.terminate().catch(() => {});
+      solveUi.latin = null;
+    }
+    if (worker) {
+      worker.terminate().catch(() => {});
+      if (solveUi.worker === worker) solveUi.worker = null;
+    }
+  }
+  if (readId === solveUi.readId && location.hash === "#/solve") {
+    paintSolve();
+    window.scrollTo(0, 0);
+  }
+}
+
+function bindSolve() {
+  const file = document.getElementById("solve-file");
+  file?.addEventListener("change", () => {
+    const picked = file.files && file.files[0];
+    if (!picked) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const readId = solveUi.readId + 1;
+      solveUi.readId = readId;
+      if (solveUi.worker) {
+        solveUi.worker.terminate().catch(() => {});
+        solveUi.worker = null;
+      }
+      solveUi.imageUrl = String(reader.result || "");
+      readExamPhoto(solveUi.imageUrl, readId);
+    };
+    reader.readAsDataURL(picked);
+  });
+  document.getElementById("solve-prev")?.addEventListener("click", () => {
+    solveUi.step = Math.max(0, solveUi.step - 1);
+    paintSolve();
+  });
+  document.getElementById("solve-next")?.addEventListener("click", () => {
+    const { steps } = solveSteps(solveUi.built);
+    if (solveUi.step >= steps.length - 1) return;
+    solveUi.step += 1;
+    paintSolve();
+  });
+  document.getElementById("solve-back")?.addEventListener("click", () => {
+    solveUi.readId += 1;
+    if (solveUi.worker) {
+      solveUi.worker.terminate().catch(() => {});
+      solveUi.worker = null;
+    }
+    solveUi.built = null;
+    solveUi.draft = null;
+    solveUi.draftError = "";
+    solveUi.step = 0;
+    solveUi.panel = "table";
+    solveUi.status = "";
+    solveUi.error = "";
+    solveUi.imageUrl = "";
+    ganttStore.solve = null;
+    paintSolve();
+  });
+  document.getElementById("solve-add-row")?.addEventListener("click", () => {
+    solveUi.draft = [...collectDraft(), blankDraftRow()];
+    solveUi.draftError = "";
+    paintSolve();
+  });
+  document.querySelectorAll("[data-draft-remove]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const rows = collectDraft();
+      const index = [...document.querySelectorAll("[data-draft-remove]")].indexOf(btn);
+      rows.splice(index, 1);
+      solveUi.draft = rows.length ? rows : [blankDraftRow()];
+      solveUi.draftError = "";
+      paintSolve();
+    });
+  });
+  document.getElementById("solve-calc")?.addEventListener("click", () => {
+    const rows = collectDraft();
+    solveUi.draft = rows;
+    try {
+      const jobs = jobsFromDraft(rows);
+      const built = jobsToNetwork(jobs);
+      rememberGantt("solve", solveCpm(built.activities), "사진에서 확인한 작업");
+      solveUi.built = built;
+      solveUi.step = 0;
+      solveUi.panel = "table";
+      solveUi.draftError = "";
+      paintSolve();
+      window.scrollTo(0, 0);
+    } catch (err) {
+      solveUi.draftError = err.message || "표를 계산하지 못했습니다.";
+      paintSolve();
+    }
+  });
+  document.getElementById("solve-edit")?.addEventListener("click", () => {
+    solveUi.built = null;
+    solveUi.panel = "table";
+    solveUi.draftError = "";
+    paintSolve();
+  });
+  bindResultViews(paintSolve);
+}
+
 function render() {
+  const hash = location.hash || "#/";
+  const onRoll = (value) =>
+    value === "#/cpm/practice/roll" ||
+    value === "#/cpm/practice" ||
+    value === "#/cpm/walk/roll" ||
+    value === "#/cpm/play/roll";
+  if (onRoll(hash) && !onRoll(lastHash)) {
+    sessionNets.roll = rollNetwork(freshSeed());
+    practiceUi.id = null;
+    practiceUi.key = null;
+  }
+  const drawNow = hash.startsWith("#/cpm/draw");
+  const drawWas = lastHash.startsWith("#/cpm/draw");
+  if (drawNow && !drawWas) resetDraw(true);
+  lastHash = hash;
+
   const { parts } = parseHash();
   const [a, b, c] = parts;
   if (!a) app.innerHTML = homeView();
-  else if (a === "curriculum") app.innerHTML = curriculumView();
   else if (a === "glossary") app.innerHTML = glossaryView();
-  else if (a === "quiz") app.innerHTML = quizView();
-  else if (a === "lesson") app.innerHTML = lessonView(b, c);
+  else if (a === "notes") app.innerHTML = notesView();
+  else if (a === "solve") app.innerHTML = solveView();
+  else if (a === "quiz") location.hash = "#/cpm/quiz";
   else if (a === "cpm" && !b) app.innerHTML = cpmHub();
   else if (a === "cpm" && b === "learn") app.innerHTML = cpmLearn(c);
   else if (a === "cpm" && b === "practice") app.innerHTML = cpmPractice(c);
-  else if (a === "cpm" && b === "quiz") app.innerHTML = quizBlock("CPM 기사형 문제", CPM_QUIZ, "data-cpm-quiz");
+  else if (a === "cpm" && b === "quiz") app.innerHTML = cpmQuizView(c);
   else if (a === "cpm" && b === "lab") app.innerHTML = cpmLab();
   else if (a === "cpm" && b === "walk") app.innerHTML = cpmWalk(c);
+  else if (a === "cpm" && b === "play") app.innerHTML = cpmPlay(c);
   else if (a === "cpm" && b === "crash") app.innerHTML = cpmCrash(c);
+  else if (a === "cpm" && b === "draw") app.innerHTML = drawView();
   else app.innerHTML = homeView();
   navActive();
   window.scrollTo(0, 0);
@@ -570,34 +3101,166 @@ function render() {
   bindCpmLab();
   bindCpmWalk();
   bindCpmCrash();
+  bindCpmPlay();
+  bindNotes();
+  bindDraw();
+  bindSolve();
 }
 
 function gradeQuiz(btn, bank) {
-  const box = btn.closest("[data-quiz], [data-cpm-quiz]");
+  const box = btn.closest("[data-cpm-quiz]");
   if (!box) return;
-  const qi = Number(box.getAttribute("data-quiz") ?? box.getAttribute("data-cpm-quiz"));
+  const qi = Number(box.getAttribute("data-cpm-quiz"));
   const choice = Number(btn.dataset.choice);
   const item = bank[qi];
   const buttons = [...box.querySelectorAll("[data-choice]")];
-  const already = buttons.some((b) => b.classList.contains("correct") || b.classList.contains("wrong"));
-  if (already) {
-    buttons.forEach((b) => b.classList.remove("correct", "wrong"));
-    return;
-  }
+  if (buttons.some((b) => b.classList.contains("correct") || b.classList.contains("wrong"))) return;
   buttons.forEach((b, j) => {
     if (j === item.answer) b.classList.add("correct");
     if (j === choice && choice !== item.answer) b.classList.add("wrong");
+  });
+  let explain = box.querySelector(".quiz-why");
+  if (!explain) {
+    explain = document.createElement("p");
+    explain.className = "quiz-why";
+    box.appendChild(explain);
+  }
+  if (choice === item.answer) {
+    forgetNote(`quiz:${item.q}`);
+    refreshNoteCount();
+    explain.textContent = item.why;
+    return;
+  }
+  rememberNote({
+    id: `quiz:${item.q}`,
+    kind: "quiz",
+    q: item.q,
+    choices: item.choices,
+    answer: item.answer,
+    yours: choice,
+    why: item.why,
+  });
+  explain.textContent = `오답노트에 넣어 두었습니다. ${item.why}`;
+}
+
+function bindNotes() {
+  document.querySelectorAll("[data-note-pick]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      btn.classList.toggle("on");
+      btn.setAttribute("aria-pressed", btn.classList.contains("on") ? "true" : "false");
+    });
+  });
+  document.querySelectorAll("[data-note-drop]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      forgetNote(btn.getAttribute("data-note-drop"));
+      app.innerHTML = notesView();
+      bindNotes();
+      refreshNoteCount();
+    });
+  });
+  document.querySelectorAll("[data-note-quiz]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.getAttribute("data-note-quiz");
+      const note = loadNotes().find((n) => n.id === id);
+      if (!note) return;
+      const choice = Number(btn.dataset.choice);
+      if (choice === note.answer) {
+        forgetNote(id);
+        noteUi.id = null;
+      } else {
+        noteUi.id = id;
+        noteUi.text = note.why;
+      }
+      app.innerHTML = notesView();
+      bindNotes();
+      refreshNoteCount();
+    });
+  });
+  document.querySelectorAll("[data-note-form]").forEach((form) => {
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const id = form.getAttribute("data-note-form");
+      const note = loadNotes().find((n) => n.id === id);
+      const bundle = note && noteBundle(note);
+      if (!note || !bundle) return;
+      const step = bundle.step;
+      if (step.kind === "multi") {
+        const picked = [...form.querySelectorAll("[data-note-pick].on")].map((b) => b.getAttribute("data-note-pick"));
+        if (!picked.length) {
+          noteUi.id = id;
+          noteUi.text = "주공정이라고 생각하는 작업을 고르세요.";
+        } else if (sameNames(picked, step.answer)) {
+          forgetNote(id);
+          noteUi.id = null;
+        } else {
+          noteUi.id = id;
+          noteUi.text = step.miss[0];
+        }
+      } else {
+        const raw = String(new FormData(form).get("answer") || "").trim().replace(/일$/, "");
+        if (!/^-?\d+$/.test(raw)) {
+          noteUi.id = id;
+          noteUi.text = "정수로 입력하세요.";
+        } else if (Number(raw) === step.answer) {
+          forgetNote(id);
+          noteUi.id = null;
+        } else {
+          noteUi.id = id;
+          noteUi.text = step.miss[0];
+        }
+      }
+      app.innerHTML = notesView();
+      bindNotes();
+      refreshNoteCount();
+    });
   });
 }
 
 document.addEventListener("click", (e) => {
   const cpmBtn = e.target.closest("[data-cpm-quiz] [data-choice]");
-  if (cpmBtn) {
-    gradeQuiz(cpmBtn, CPM_QUIZ);
+  if (cpmBtn) gradeQuiz(cpmBtn, CPM_QUIZ);
+  const quizChoice = e.target.closest("[data-quiz-choice]");
+  if (quizChoice && quizUi.choice == null) {
+    const choice = Number(quizChoice.getAttribute("data-quiz-choice"));
+    const item = quizUi.order[quizUi.at] && quizUi.order[quizUi.at].item;
+    if (!item) return;
+    quizUi.choice = choice;
+    if (choice === item.answer) forgetNote(`quiz:${item.q}`);
+    else {
+      rememberNote({
+        id: `quiz:${item.q}`,
+        kind: "quiz",
+        q: item.q,
+        choices: item.choices,
+        answer: item.answer,
+        yours: choice,
+        why: item.why,
+      });
+    }
+    refreshNoteCount();
+    const { parts } = parseHash();
+    app.innerHTML = cpmQuizView(parts[2]);
+    navActive();
     return;
   }
-  const btn = e.target.closest("[data-quiz] [data-choice]");
-  if (btn) gradeQuiz(btn, QUIZ);
+  if (e.target.closest("[data-quiz-next]")) {
+    quizUi.choice = null;
+    quizUi.at += 1;
+    if (quizUi.at >= quizUi.order.length) {
+      const level = quizUi.level;
+      quizUi.round += 1;
+      startQuiz(level, true);
+    }
+    const { parts } = parseHash();
+    app.innerHTML = cpmQuizView(parts[2]);
+    navActive();
+    window.scrollTo(0, 0);
+  }
+});
+
+document.getElementById("nav-back")?.addEventListener("click", () => {
+  if (history.length > 1) history.back();
+  else location.hash = "#/";
 });
 
 window.addEventListener("hashchange", render);
